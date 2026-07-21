@@ -1,0 +1,149 @@
+import { el, type AppContext, type Screen } from "../router.js";
+import { GAMES } from "../games.js";
+import { menuScreen } from "./menu.js";
+
+/**
+ * Single Play game picker. A coverflow-style carousel: the centered card is
+ * large and face-on, neighbors recede and rotate away, and the row wraps
+ * around circularly ("둥글게 밀리듯"). Drag / arrows / wheel to rotate; click
+ * the center card (or 선택) to start.
+ */
+export const selectScreen: Screen = (ctx: AppContext) => {
+  const n = GAMES.length;
+  let current = 0;
+
+  const stage = el("div", { class: "carousel-stage" });
+  const cards: HTMLElement[] = GAMES.map((game, i) => {
+    const card = el(
+      "div",
+      {
+        class: `game-card${game.start ? "" : " locked"}`,
+        onclick: () => onCardClick(i),
+      },
+      [
+        el("div", { class: "game-icon", text: game.icon }),
+        el("div", { class: "game-name", text: game.name }),
+        el("div", { class: "game-tag", text: game.tagline }),
+      ],
+    );
+    card.style.setProperty("--accent", game.color);
+    stage.appendChild(card);
+    return card;
+  });
+
+  const title = el("div", { class: "carousel-title" });
+  const hint = el("div", { class: "carousel-hint", text: "← → 로 넘기고, 가운데 카드를 눌러 시작" });
+
+  const startBtn = el("button", { class: "start-btn", text: "선택", onclick: () => startCurrent() });
+
+  const screen = el("div", { class: "screen select-screen" }, [
+    el("button", { class: "back-btn corner", text: "← 뒤로", onclick: () => ctx.navigate(menuScreen) }),
+    el("h1", { class: "screen-title", text: "게임 선택" }),
+    el("div", { class: "carousel" }, [
+      el("button", { class: "arrow left", html: "‹", onclick: () => rotate(-1) }),
+      stage,
+      el("button", { class: "arrow right", html: "›", onclick: () => rotate(1) }),
+    ]),
+    title,
+    startBtn,
+    hint,
+  ]);
+
+  ctx.root.appendChild(screen);
+
+  /** Shortest circular distance from `current` to card `i`, in range [-n/2, n/2]. */
+  function wrappedOffset(i: number): number {
+    let o = i - current;
+    if (o > n / 2) o -= n;
+    if (o < -n / 2) o += n;
+    return o;
+  }
+
+  function layout(): void {
+    cards.forEach((card, i) => {
+      const o = wrappedOffset(i);
+      const abs = Math.abs(o);
+      const spacing = 150;
+      const x = o * spacing;
+      const rot = Math.max(-60, Math.min(60, -o * 45));
+      const scale = o === 0 ? 1 : Math.max(0.6, 0.85 - (abs - 1) * 0.12);
+      const z = 200 - abs * 60;
+      card.style.transform = `translateX(${x}px) translateZ(${z - 200}px) rotateY(${rot}deg) scale(${scale})`;
+      card.style.zIndex = String(100 - abs);
+      card.style.opacity = abs > 3 ? "0" : "1";
+      card.style.pointerEvents = abs > 3 ? "none" : "auto";
+      card.classList.toggle("center", o === 0);
+    });
+    const game = GAMES[current]!;
+    title.textContent = game.name;
+  }
+
+  function rotate(dir: number): void {
+    current = (current + dir + n) % n;
+    layout();
+  }
+
+  function onCardClick(i: number): void {
+    if (i === current) startCurrent();
+    else rotate(wrappedOffset(i) > 0 ? 1 : -1);
+  }
+
+  function startCurrent(): void {
+    const game = GAMES[current]!;
+    if (game.start) {
+      ctx.navigate(game.start);
+    } else {
+      // Locked: nudge the card to signal "not yet".
+      const card = cards[current]!;
+      card.classList.remove("shake");
+      void card.offsetWidth; // reflow to restart animation
+      card.classList.add("shake");
+    }
+  }
+
+  // Keyboard.
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === "ArrowLeft") rotate(-1);
+    else if (e.key === "ArrowRight") rotate(1);
+    else if (e.key === "Enter") startCurrent();
+    else if (e.key === "Escape") ctx.navigate(menuScreen);
+  };
+  window.addEventListener("keydown", onKey);
+
+  // Wheel (horizontal or vertical) rotates.
+  let wheelLock = false;
+  const onWheel = (e: WheelEvent) => {
+    e.preventDefault();
+    if (wheelLock) return;
+    const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    if (Math.abs(d) < 8) return;
+    rotate(d > 0 ? 1 : -1);
+    wheelLock = true;
+    setTimeout(() => (wheelLock = false), 220);
+  };
+  screen.addEventListener("wheel", onWheel, { passive: false });
+
+  // Pointer drag / swipe.
+  let startX = 0;
+  let dragging = false;
+  const onDown = (e: PointerEvent) => {
+    dragging = true;
+    startX = e.clientX;
+  };
+  const onUp = (e: PointerEvent) => {
+    if (!dragging) return;
+    dragging = false;
+    const dx = e.clientX - startX;
+    if (Math.abs(dx) > 40) rotate(dx > 0 ? -1 : 1);
+  };
+  stage.addEventListener("pointerdown", onDown);
+  window.addEventListener("pointerup", onUp);
+
+  layout();
+
+  return () => {
+    window.removeEventListener("keydown", onKey);
+    window.removeEventListener("pointerup", onUp);
+    screen.removeEventListener("wheel", onWheel);
+  };
+};

@@ -1,0 +1,12 @@
+{
+  "name": "skill-board-game",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev": "pnpm --filter @skill/client dev",
+    "server": "pnpm --filter @skill/server dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test"
+  }
+}
