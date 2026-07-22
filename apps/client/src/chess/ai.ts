@@ -114,6 +114,42 @@ function scoreMove(m: Move): number {
   return s;
 }
 
+// Wall-clock budget for a full move search (iterative deepening stops here).
+const TIME_MS = 900;
+let deadline = 0;
+let aborted = false;
+function timeUp(): boolean {
+  if (aborted) return true;
+  if (Date.now() > deadline) aborted = true;
+  return aborted;
+}
+
+/**
+ * Quiescence search: at the horizon, keep resolving captures (and check
+ * evasions) so the evaluation is only taken in "quiet" positions. This removes
+ * most tactical blunders from the horizon effect.
+ */
+function quiesce(state: GameState, alpha: number, beta: number, rules?: SkillRules, disguise?: Color): number {
+  if (timeUp()) return 0;
+  const inCheck = isInCheck(state, state.turn, rules);
+  let moves = generateLegalMoves(state, undefined, rules);
+  if (moves.length === 0) return inCheck ? -MATE : 0;
+
+  if (!inCheck) {
+    const standPat = evaluate(state, disguise);
+    if (standPat >= beta) return beta;
+    if (standPat > alpha) alpha = standPat;
+    moves = moves.filter((m) => m.captured || m.promotion); // only forcing moves
+  }
+  for (const move of orderMoves(moves)) {
+    const score = -quiesce(applyMove(state, move), -beta, -alpha, rules, disguise);
+    if (aborted) return alpha;
+    if (score >= beta) return beta;
+    if (score > alpha) alpha = score;
+  }
+  return alpha;
+}
+
 function negamax(
   state: GameState,
   depth: number,
@@ -122,17 +158,19 @@ function negamax(
   rules?: SkillRules,
   disguise?: Color,
 ): number {
+  if (timeUp()) return 0;
   const moves = generateLegalMoves(state, undefined, rules);
   if (moves.length === 0) {
     // Checkmate is bad for the side to move; stalemate is neutral.
     // Add depth so shallower mates score better (mate sooner).
     return isInCheck(state, state.turn, rules) ? -(MATE + depth) : 0;
   }
-  if (depth === 0) return evaluate(state, disguise);
+  if (depth === 0) return quiesce(state, alpha, beta, rules, disguise);
 
   let best = -Infinity;
   for (const move of orderMoves(moves)) {
     const score = -negamax(applyMove(state, move), depth - 1, -beta, -alpha, rules, disguise);
+    if (aborted) return best;
     if (score > best) best = score;
     if (best > alpha) alpha = best;
     if (alpha >= beta) break; // cutoff
@@ -141,39 +179,48 @@ function negamax(
 }
 
 /**
- * Pick a move for the side to move, searching to `depth`. Returns null if there
- * are no legal moves (game already over). Ties are broken randomly so the AI
- * doesn't play identically every game.
+ * Pick a move for the side to move. Uses iterative deepening up to `maxDepth`
+ * under a wall-clock budget, so it plays as deep as time allows and returns the
+ * best move from the last fully-searched depth. Ties break randomly.
  */
 export function chooseMove(
   state: GameState,
-  depth: number,
+  maxDepth: number,
   rules?: SkillRules,
   forbiddenFrom?: Square,
   disguise?: Color,
 ): Move | null {
-  let moves = orderMoves(generateLegalMoves(state, undefined, rules));
+  let rootMoves = orderMoves(generateLegalMoves(state, undefined, rules));
   // 무르기: the just-undone piece may not move again this turn.
   if (forbiddenFrom !== undefined) {
-    const filtered = moves.filter((m) => m.from !== forbiddenFrom);
-    if (filtered.length > 0) moves = filtered;
+    const filtered = rootMoves.filter((m) => m.from !== forbiddenFrom);
+    if (filtered.length > 0) rootMoves = filtered;
   }
-  if (moves.length === 0) return null;
+  if (rootMoves.length === 0) return null;
 
-  let best = -Infinity;
-  let bestMoves: Move[] = [];
-  let alpha = -Infinity;
-  const beta = Infinity;
+  deadline = Date.now() + TIME_MS;
+  aborted = false;
 
-  for (const move of moves) {
-    const score = -negamax(applyMove(state, move), depth - 1, -beta, -alpha, rules, disguise);
-    if (score > best) {
-      best = score;
-      bestMoves = [move];
-    } else if (score === best) {
-      bestMoves.push(move);
+  let best = rootMoves[0]!;
+  let bestMoves: Move[] = [best];
+
+  for (let depth = 1; depth <= maxDepth; depth++) {
+    let localBest = -Infinity;
+    let localMoves: Move[] = [];
+    let alpha = -Infinity;
+    // Search the previous best move first for stronger pruning.
+    const ordered = [best, ...rootMoves.filter((m) => m !== best)];
+    for (const move of ordered) {
+      const score = -negamax(applyMove(state, move), depth - 1, -Infinity, -alpha, rules, disguise);
+      if (aborted) break;
+      if (score > localBest) { localBest = score; localMoves = [move]; }
+      else if (score === localBest) localMoves.push(move);
+      if (localBest > alpha) alpha = localBest;
     }
-    if (best > alpha) alpha = best;
+    if (aborted) break; // discard incomplete depth
+    best = localMoves[0]!;
+    bestMoves = localMoves;
+    if (localBest >= MATE) break; // forced mate found
   }
   return bestMoves[Math.floor(Math.random() * bestMoves.length)]!;
 }

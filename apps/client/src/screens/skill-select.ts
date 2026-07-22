@@ -1,6 +1,7 @@
 import { el, type AppContext, type Screen } from "../router.js";
 import { SKILLS, MAX_DECK_COST, skillById } from "../skills.js";
-import { selectScreen } from "./select.js";
+// Preserved for the upcoming card-deck system; not wired into navigation yet.
+import { menuScreen } from "./menu.js";
 
 /**
  * Pre-game skill draft. Shows all skills as cards; the player builds a deck
@@ -85,7 +86,7 @@ export function makeSkillSelect(next: (skillIds: string[]) => Screen): Screen {
 
     const screen = el("div", { class: "screen skill-screen" }, [
       el("div", { class: "skill-topbar" }, [
-        el("button", { class: "back-btn", text: "← 뒤로", onclick: () => ctx.navigate(selectScreen) }),
+        el("button", { class: "back-btn", text: "← 뒤로", onclick: () => ctx.navigate(menuScreen) }),
         el("h1", { class: "screen-title", text: "스킬 선택" }),
         counter,
       ]),

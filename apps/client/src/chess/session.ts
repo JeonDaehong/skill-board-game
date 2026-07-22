@@ -7,11 +7,19 @@ import { chooseMove } from "./ai.js";
  * expose the same surface, so the game controller doesn't care whether it's a
  * local AI game (in-process `reduce`) or an online match (server round-trip).
  */
+/** Out-of-band events that only a remote (server) session produces. */
+export type SessionNotice = "rematch-waiting" | "opponent-left";
+
 export interface Session {
   readonly myColor: Color;
   getState(): MatchState;
   subscribe(cb: (state: MatchState, events: MatchEvent[]) => void): void;
+  /** Notices that aren't state changes (rematch pending, opponent quit). */
+  onNotice(cb: (notice: SessionNotice) => void): void;
   dispatch(action: Action): void;
+  /** Ask to play again with the same decks. Local restarts at once; remote
+   *  needs the opponent to agree, then a fresh state arrives over the socket. */
+  rematch(): void;
   dispose(): void;
 }
 
@@ -32,6 +40,7 @@ export function createLocalSession(cfg: LocalConfig): Session {
   let listener: ((s: MatchState, e: MatchEvent[]) => void) | null = null;
   let disposed = false;
   let timer: number | undefined;
+  // Local play has no opponent to negotiate with, so notices never fire.
 
   function apply(action: Action): void {
     const res = reduce(state, action, Math.random);
@@ -64,7 +73,15 @@ export function createLocalSession(cfg: LocalConfig): Session {
     subscribe: (cb) => {
       listener = cb;
     },
+    onNotice: () => {},
     dispatch: (action) => apply(action),
+    rematch: () => {
+      if (disposed) return;
+      if (timer) clearTimeout(timer);
+      state = createMatch(whiteDeck, blackDeck);
+      listener?.(state, []);
+      scheduleAi(); // AI moves first again if the human plays black
+    },
     dispose: () => {
       disposed = true;
       if (timer) clearTimeout(timer);
@@ -76,12 +93,17 @@ export function createLocalSession(cfg: LocalConfig): Session {
 export function createRemoteSession(ws: WebSocket, myColor: Color, initial: MatchState): Session {
   let state = initial;
   let listener: ((s: MatchState, e: MatchEvent[]) => void) | null = null;
+  let noticer: ((n: SessionNotice) => void) | null = null;
 
   ws.onmessage = (e) => {
     const msg = JSON.parse(String(e.data));
     if (msg.type === "state") {
       state = msg.state as MatchState;
       listener?.(state, msg.events as MatchEvent[]);
+    } else if (msg.type === "rematch-waiting") {
+      noticer?.("rematch-waiting");
+    } else if (msg.type === "opponent-left") {
+      noticer?.("opponent-left");
     }
   };
 
@@ -91,7 +113,11 @@ export function createRemoteSession(ws: WebSocket, myColor: Color, initial: Matc
     subscribe: (cb) => {
       listener = cb;
     },
+    onNotice: (cb) => {
+      noticer = cb;
+    },
     dispatch: (action) => ws.send(JSON.stringify({ type: "action", action })),
+    rematch: () => ws.send(JSON.stringify({ type: "rematch" })),
     dispose: () => ws.close(),
   };
 }

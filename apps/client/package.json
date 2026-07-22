@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@skill/chess-core": "workspace:*",
-    "@skill/engine": "workspace:*"
+    "@skill/engine": "workspace:*",
+    "@skill/games": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.7.0",

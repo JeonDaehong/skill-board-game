@@ -15,26 +15,24 @@ import { el, type AppContext, type Screen } from "../router.js";
 import { BoardRenderer, type RenderOptions } from "../render.js";
 import { skillById } from "../skills.js";
 import { createLocalSession, type Session } from "./session.js";
-import { draftAiDeck } from "./ai-deck.js";
-import { selectScreen } from "../screens/select.js";
 import { menuScreen } from "../screens/menu.js";
 
 export interface ChessOptions {
   humanColor: Color;
   depth: number;
-  skills?: string[];
 }
 
-/** Single-player entry: build a local session, then mount the shared game view. */
+/** Single-player entry: build a local session, then mount the shared game view.
+ *  Plain chess for now — no skills (the card-deck system is being reworked). */
 export function makeChess(opts: ChessOptions): Screen {
   return (ctx) => {
     const session = createLocalSession({
       humanColor: opts.humanColor,
-      humanDeck: opts.skills ?? [],
-      aiDeck: draftAiDeck(),
+      humanDeck: [],
+      aiDeck: [],
       depth: opts.depth,
     });
-    return mountGame(ctx, session, () => ctx.navigate(selectScreen));
+    return mountGame(ctx, session, () => ctx.navigate(menuScreen));
   };
 }
 
@@ -68,6 +66,10 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
   let foresightPeek = false;
   let titanSelected = false;
   let sacSource: Square | null = null;
+  // Game-over / rematch UI state (client-only).
+  let gameOverUp = false;
+  let rematchPending = false;
+  let opponentLeft = false;
 
   const canvas = el("canvas", { class: "board-canvas" }) as HTMLCanvasElement;
   canvas.width = 640;
@@ -132,6 +134,14 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
     renderSkillBar();
     renderOppStrip();
     if (s.status === "ended") showGameOver();
+    else if (gameOverUp && !opponentLeft) {
+      // A rematch started: tear down the game-over card and reset its state.
+      gameOverUp = false;
+      rematchPending = false;
+      opponentLeft = false;
+      overlay.classList.add("hidden");
+      overlay.replaceChildren();
+    }
   }
 
   function renderStatus(): void {
@@ -168,9 +178,12 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
   function renderSkillBar(): void {
     const deck = state().players[me].deck;
     if (deck.length === 0) {
-      skillBar.replaceChildren(el("div", { class: "skill-bar-empty", text: "선택한 스킬 없음" }));
+      // Plain game (no cards): hide the bar entirely.
+      skillBar.replaceChildren();
+      skillBar.classList.add("hidden");
       return;
     }
+    skillBar.classList.remove("hidden");
     const busy = !!targeting || foresightPeek || !!state().pending || !!state().titan;
     skillBar.replaceChildren(
       ...deck.map((c) => {
@@ -219,16 +232,47 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
       s.winner === "draw" ? "무승부"
       : s.winner === me ? "승리! 🎉"
       : "패배";
-    statusEl.textContent = msg;
+    statusEl.textContent = opponentLeft ? `${msg} · 상대가 나갔습니다` : msg;
+
+    const actions: HTMLElement[] = [];
+    if (opponentLeft) {
+      actions.push(el("div", { class: "overlay-note", text: "상대가 나갔습니다" }));
+    } else if (rematchPending) {
+      actions.push(el("button", { class: "start-btn waiting", text: "상대 대기 중…" }));
+    } else {
+      actions.push(el("button", {
+        class: "start-btn",
+        text: "다시하기",
+        // Show the pending state first; a local session restarts synchronously
+        // inside rematch() and its fresh state will tear this overlay back down.
+        onclick: () => { rematchPending = true; showGameOver(); session.rematch(); },
+      }));
+    }
+    actions.push(el("button", { class: "back-btn", text: "메뉴로", onclick: () => ctx.navigate(menuScreen) }));
+
     overlay.replaceChildren(
       el("div", { class: "overlay-card" }, [
         el("div", { class: "overlay-msg", text: msg }),
+        el("div", { class: "overlay-actions" }, actions),
+      ]),
+    );
+    overlay.classList.remove("hidden");
+    gameOverUp = true;
+  }
+
+  /** Opponent quit before the match ended — there's no result to show. */
+  function showOpponentLeft(): void {
+    statusEl.textContent = "상대가 나갔습니다";
+    overlay.replaceChildren(
+      el("div", { class: "overlay-card" }, [
+        el("div", { class: "overlay-msg", text: "상대가 나갔습니다" }),
         el("div", { class: "overlay-actions" }, [
           el("button", { class: "back-btn", text: "메뉴로", onclick: () => ctx.navigate(menuScreen) }),
         ]),
       ]),
     );
     overlay.classList.remove("hidden");
+    gameOverUp = true;
   }
 
   // ── highlight helpers ──────────────────────────────────────
@@ -309,7 +353,7 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
 
   function handleClick(sq: Square): void {
     const s = state();
-    if (s.status === "ended") return;
+    if (s.status === "ended" || opponentLeft) return;
 
     if (s.pending && s.pending.color === me) return handlePending(sq);
     if (targeting) return handleTargeting(sq);
@@ -466,6 +510,17 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
     // Reset local targeting if the turn/pending situation changed under us.
     if (!myTurn()) { selected = null; targeting = null; }
     render();
+  });
+
+  session.onNotice((notice) => {
+    if (notice === "rematch-waiting") {
+      rematchPending = true;
+      if (gameOverUp) showGameOver();
+    } else if (notice === "opponent-left") {
+      opponentLeft = true;
+      if (state().status === "ended") showGameOver();
+      else showOpponentLeft();
+    }
   });
 
   canvas.addEventListener("click", (e) => {

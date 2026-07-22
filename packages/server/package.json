@@ -11,7 +11,8 @@
   "dependencies": {
     "@skill/chess-core": "workspace:*",
     "@skill/engine": "workspace:*",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "@skill/games": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

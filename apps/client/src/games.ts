@@ -1,9 +1,4 @@
-import type { Screen } from "./router.js";
-import { makeCountdown } from "./screens/countdown.js";
-import { makeSkillSelect } from "./screens/skill-select.js";
-import { makeChess } from "./chess/controller.js";
-
-/** A game shown in the Single Play carousel. */
+/** A game shown in the picker carousel. */
 export interface GameEntry {
   id: string;
   name: string;
@@ -13,30 +8,22 @@ export interface GameEntry {
   tagline: string;
   /** Accent color for the card. */
   color: string;
-  /** If set, selecting the game starts this screen (after countdown). null = locked. */
-  start: Screen | null;
+  /** Playable now? false = 준비중 (locked). */
+  playable: boolean;
 }
 
 /**
- * The seven carousel slots. Chess is playable now; the rest are placeholders
- * ("준비중" / locked) that we'll fill in as each game gets built.
+ * The five games. Chess is playable now (plain rules — the card-deck system is
+ * being reworked); the other four are 준비중 until their engines are built.
  */
 export const GAMES: GameEntry[] = [
-  {
-    id: "chess",
-    name: "체스",
-    icon: "♞",
-    tagline: "vs AI",
-    color: "#c9a15a",
-    // 체스 선택 → 스킬 선택(카드 20개) → 3·2·1 카운트다운 → AI 대국
-    start: makeSkillSelect((skills) =>
-      makeCountdown(makeChess({ humanColor: "w", depth: 3, skills })),
-    ),
-  },
-  { id: "omok", name: "오목", icon: "⚫", tagline: "준비중", color: "#5a7fc9", start: null },
-  { id: "q1", name: "???", icon: "?", tagline: "Coming soon", color: "#6b6f76", start: null },
-  { id: "q2", name: "???", icon: "?", tagline: "Coming soon", color: "#6b6f76", start: null },
-  { id: "q3", name: "???", icon: "?", tagline: "Coming soon", color: "#6b6f76", start: null },
-  { id: "q4", name: "???", icon: "?", tagline: "Coming soon", color: "#6b6f76", start: null },
-  { id: "q5", name: "???", icon: "?", tagline: "Coming soon", color: "#6b6f76", start: null },
+  { id: "chess", name: "체스", icon: "♞", tagline: "클래식", color: "#d9b45f", playable: true },
+  { id: "omok", name: "오목", icon: "⚫", tagline: "5목 승부", color: "#5a8bd0", playable: true },
+  { id: "othello", name: "오셀로", icon: "◑", tagline: "뒤집기", color: "#4caf7d", playable: true },
+  { id: "janggi", name: "장기", icon: "將", tagline: "궁성 대결", color: "#d0645a", playable: true },
+  { id: "quoridor", name: "쿼리도", icon: "▦", tagline: "벽 미로", color: "#9a6bd0", playable: true },
 ];
+
+export function gameById(id: string): GameEntry | undefined {
+  return GAMES.find((g) => g.id === id);
+}

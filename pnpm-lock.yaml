@@ -16,6 +16,9 @@ importers:
       '@skill/engine':
         specifier: workspace:*
         version: link:../../packages/engine
+      '@skill/games':
+        specifier: workspace:*
+        version: link:../../packages/games
     devDependencies:
       typescript:
         specifier: ^5.7.0
@@ -46,6 +49,15 @@ importers:
         specifier: ^3.0.0
         version: 3.2.7(@types/node@22.20.1)(tsx@4.23.1)
 
+  packages/games:
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@22.20.1)(tsx@4.23.1)
+
   packages/server:
     dependencies:
       '@skill/chess-core':
@@ -54,6 +66,9 @@ importers:
       '@skill/engine':
         specifier: workspace:*
         version: link:../engine
+      '@skill/games':
+        specifier: workspace:*
+        version: link:../games
       ws:
         specifier: ^8.18.0
         version: 8.21.1
