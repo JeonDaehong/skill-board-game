@@ -19,11 +19,12 @@ export interface BoardView<S = unknown, M = unknown> {
   hover?(s: S, cx: number, cy: number, px: number): void;
 }
 
-// Theme colors shared by the board renderers.
-const BOARD_BG = "#111a26";
-const LINE = "rgba(200, 170, 110, 0.55)";
-const LAST = "rgba(53, 208, 192, 0.6)";
-const STONE_B = "#0c1016";
+// Theme colors shared by the board renderers (warm dark-fantasy wood).
+const BOARD_BG = "#2b1d12";
+const LINE = "rgba(216, 180, 90, 0.5)";
+const LAST = "rgba(224, 150, 70, 0.7)";
+const HINT = "rgba(216, 180, 90, 0.45)";
+const STONE_B = "#140d08";
 const STONE_W = "#efe4cb";
 
 function boardBase(ctx: CanvasRenderingContext2D, px: number): void {
@@ -78,7 +79,7 @@ function othelloView(): BoardView<OthelloState, OthelloMove> {
   return {
     mod: othello, controls: null, setRerender() {},
     draw(ctx, px, s) {
-      ctx.fillStyle = "#123328";
+      ctx.fillStyle = "#243021";
       ctx.fillRect(0, 0, px, px);
       const cs = px / N;
       ctx.strokeStyle = LINE;
@@ -130,7 +131,7 @@ function janggiView(): BoardView<JanggiState, JanggiMove> {
       }
       const dests = sel ? janggi.legalMoves(s).filter((m) => m.from[0] === sel![0] && m.from[1] === sel![1]).map((m) => m.to[1] * W + m.to[0]) : [];
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-        if (dests.includes(y * W + x)) { ctx.fillStyle = "rgba(53,208,192,0.4)"; ctx.beginPath(); ctx.arc(gx(x, csx), gy(y, csy), cs * 0.16, 0, Math.PI * 2); ctx.fill(); }
+        if (dests.includes(y * W + x)) { ctx.fillStyle = HINT; ctx.beginPath(); ctx.arc(gx(x, csx), gy(y, csy), cs * 0.16, 0, Math.PI * 2); ctx.fill(); }
         const p = s.board[y * W + x];
         if (!p) continue;
         const r = cs * 0.4;
@@ -138,7 +139,7 @@ function janggiView(): BoardView<JanggiState, JanggiMove> {
         disc(ctx, gx(x, csx), gy(y, csy), r, isB ? "#1c3f6e" : "#7a2424");
         if (sel && sel[0] === x && sel[1] === y) { ctx.strokeStyle = "#f0e0b8"; ctx.lineWidth = r * 0.18; ctx.beginPath(); ctx.arc(gx(x, csx), gy(y, csy), r, 0, Math.PI * 2); ctx.stroke(); }
         ctx.fillStyle = isB ? "#cfe0ff" : "#ffd9d9";
-        ctx.font = `${Math.floor(r * 1.1)}px "Cinzel", serif`;
+        ctx.font = `700 ${Math.floor(r * 1.1)}px "Gowun Batang", serif`;
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.fillText(JGLYPH[p.t]![isB ? 0 : 1], gx(x, csx), gy(y, csy) + r * 0.06);
       }
@@ -215,12 +216,12 @@ function quoridorView(me: Player): BoardView<QuoridorState, QuoridorMove> {
       }
       // my goal row tint
       const goalY = me === "b" ? N - 1 : 0;
-      ctx.fillStyle = "rgba(53,208,192,0.10)";
+      ctx.fillStyle = "rgba(224,150,70,0.12)";
       ctx.fillRect(0, goalY * cs, px, cs);
       // legal pawn destinations (move mode)
       if (mode === "move") {
         for (const [tx, ty] of pawnMoves(s, s.turn)) {
-          ctx.fillStyle = "rgba(53,208,192,0.4)";
+          ctx.fillStyle = HINT;
           ctx.beginPath(); ctx.arc((tx + 0.5) * cs, (ty + 0.5) * cs, cs * 0.17, 0, Math.PI * 2); ctx.fill();
         }
       }
@@ -232,7 +233,7 @@ function quoridorView(me: Player): BoardView<QuoridorState, QuoridorMove> {
       // ghost wall preview (wall mode)
       if (mode === "wall" && ghost) {
         const legal = quoridor.isLegal(s, { kind: "wall", x: ghost.x, y: ghost.y, o: orient });
-        drawWall(ctx, ghost.x, ghost.y, orient, cs, legal ? "rgba(53,208,192,0.75)" : "rgba(255,80,80,0.6)");
+        drawWall(ctx, ghost.x, ghost.y, orient, cs, legal ? "rgba(224,150,70,0.82)" : "rgba(255,80,80,0.6)");
       }
       // pawns
       disc(ctx, (s.pb[0] + 0.5) * cs, (s.pb[1] + 0.5) * cs, cs * 0.34, "#1c3f6e");

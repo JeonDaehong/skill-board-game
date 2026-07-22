@@ -5,6 +5,7 @@ import { optionScreen } from "./option.js";
 import { makeCountdown } from "./countdown.js";
 import { makeChess } from "../chess/controller.js";
 import { makeLocalBoardGame } from "../board/controller.js";
+import { deckScreen } from "./deck.js";
 import { pillNav } from "./nav.js";
 import { topHud } from "./hud.js";
 
@@ -19,8 +20,8 @@ const singlePlay: Screen = makeGamePicker(
 
 /** Main menu (home tab): launcher-style hero + big play cards + bottom nav. */
 export function menuScreen(ctx: AppContext): void {
-  const playCard = (icon: string, kicker: string, label: string, sub: string, onclick: () => void) =>
-    el("button", { class: "play-card", onclick }, [
+  const playCard = (icon: string, kicker: string, label: string, sub: string, onclick: () => void, extra = "") =>
+    el("button", { class: `play-card ${extra}`, onclick }, [
       el("span", { class: "play-icon", text: icon }),
       el("span", { class: "play-body" }, [
         el("span", { class: "play-kicker", text: kicker }),
@@ -50,6 +51,7 @@ export function menuScreen(ctx: AppContext): void {
           playCard("🎮", "SOLO", "Single Play", "AI와 1:1 대전", () => ctx.navigate(singlePlay)),
           playCard("🌐", "ONLINE", "Multi Play", "퀵스타트 · 방 만들기 · 참여하기", () => ctx.navigate(multiScreen)),
         ]),
+        playCard("🃏", "DECK", "덱 만들기", "게임별 카드 덱 구성", () => ctx.navigate(deckScreen), "deck-cta"),
         el("div", { class: "menu-util" }, [
           util("⚙️", "OPTION", () => ctx.navigate(optionScreen)),
           util("⏻", "QUIT", () => quit()),
