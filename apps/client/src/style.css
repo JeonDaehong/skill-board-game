@@ -681,3 +681,6 @@ button { font-family: inherit; }
 :root[data-lang="ko"] .tcg-card.lg .tcg-text { font-size: 0.68rem; }
 :root[data-lang="ko"] .tcg-card.sm .tcg-name { font-size: 0.62rem; }
 :root[data-lang="ko"] .hero-title { letter-spacing: 0.02em; }
+
+/* Why the match ended — sits under the result on the game-over card. */
+.overlay-why { margin-top: -4px; font-size: 0.92rem; color: var(--muted); letter-spacing: 0.02em; }

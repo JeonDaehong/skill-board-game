@@ -11,10 +11,10 @@ import {
 } from "@skill/chess-core";
 
 /**
- * A small negamax + alpha-beta chess AI built entirely on top of chess-core's
- * pure move logic. Not a strong engine — depth 2–3 with material + piece-square
- * evaluation — but enough for a fun single-player opponent. Runs on the main
- * thread; a later pass can move it into a Web Worker for deeper search.
+ * A negamax + alpha-beta chess AI built entirely on top of chess-core's pure move
+ * logic: iterative deepening under a wall-clock budget, quiescence search at the
+ * horizon, and material + piece-square evaluation. Runs on the main thread, which
+ * is what caps the budget; a later pass can move it into a Web Worker.
  */
 
 const PIECE_VALUE: Record<PieceType, number> = {
@@ -115,7 +115,9 @@ function scoreMove(m: Move): number {
 }
 
 // Wall-clock budget for a full move search (iterative deepening stops here).
-const TIME_MS = 900;
+// This is a turn-based game against a human, so a few seconds of thinking buys a
+// much stronger opponent at no real cost to how the game feels.
+const TIME_MS = 3000;
 let deadline = 0;
 let aborted = false;
 function timeUp(): boolean {

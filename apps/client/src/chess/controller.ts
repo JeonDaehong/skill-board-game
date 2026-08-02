@@ -16,7 +16,7 @@ import { BoardRenderer, preloadPieces, type RenderOptions } from "../render.js";
 import { skillById } from "../skills.js";
 import { createLocalSession, type Session } from "./session.js";
 import { menuScreen } from "../screens/menu.js";
-import { gameName, skillName, t } from "../i18n.js";
+import { gameName, skillName, t, tPassthrough } from "../i18n.js";
 
 export interface ChessOptions {
   humanColor: Color;
@@ -36,6 +36,9 @@ export function makeChess(opts: ChessOptions): Screen {
     return mountGame(ctx, session, () => ctx.navigate(menuScreen));
   };
 }
+
+/** How long the final position stays visible before the result card covers it. */
+const GAME_OVER_DELAY_MS = 1100;
 
 const IMMEDIATE: Record<string, string> = {
   "one-more": "one-more",
@@ -71,6 +74,9 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
   let gameOverUp = false;
   let rematchPending = false;
   let opponentLeft = false;
+  // The overlay covers the board, so it waits a beat — otherwise the mating move
+  // is hidden behind the result card the instant it is played.
+  let overlayTimer: number | undefined;
 
   const canvas = el("canvas", { class: "board-canvas" }) as HTMLCanvasElement;
   canvas.width = 640;
@@ -134,8 +140,9 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
     renderStatus();
     renderSkillBar();
     renderOppStrip();
-    if (s.status === "ended") showGameOver();
-    else if (gameOverUp && !opponentLeft) {
+    if (s.status === "ended") { scheduleGameOver(); return; }
+    if (overlayTimer) { clearTimeout(overlayTimer); overlayTimer = undefined; }
+    if (gameOverUp && !opponentLeft) {
       // A rematch started: tear down the game-over card and reset its state.
       gameOverUp = false;
       rematchPending = false;
@@ -227,13 +234,22 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
     );
   }
 
+  function scheduleGameOver(): void {
+    if (gameOverUp || overlayTimer) return;
+    overlayTimer = window.setTimeout(() => { overlayTimer = undefined; showGameOver(); }, GAME_OVER_DELAY_MS);
+  }
+
   function showGameOver(): void {
     const s = state();
     const msg =
       s.winner === "draw" ? t("game.draw")
       : s.winner === me ? t("game.victory")
       : t("game.defeat");
-    statusEl.textContent = opponentLeft ? `${msg} · ${t("game.oppLeft")}` : msg;
+    // Why it ended — checkmate, stalemate, resignation… — so a loss is legible.
+    const why = s.endReason ? tPassthrough(s.endReason) : "";
+    statusEl.textContent = opponentLeft
+      ? `${msg} · ${t("game.oppLeft")}`
+      : why ? `${msg} · ${why}` : msg;
 
     const actions: HTMLElement[] = [];
     if (opponentLeft) {
@@ -254,6 +270,7 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
     overlay.replaceChildren(
       el("div", { class: "overlay-card" }, [
         el("div", { class: "overlay-msg", text: msg }),
+        why ? el("div", { class: "overlay-why", text: why }) : null,
         el("div", { class: "overlay-actions" }, actions),
       ]),
     );
@@ -535,5 +552,5 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
   // Sprites may still be decoding on a cold load; repaint once they land.
   void preloadPieces().then(render);
 
-  return () => session.dispose();
+  return () => { if (overlayTimer) clearTimeout(overlayTimer); session.dispose(); };
 }

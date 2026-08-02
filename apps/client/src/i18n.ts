@@ -198,6 +198,14 @@ const PASSTHROUGH = {
   "Reached the goal": ["Reached the goal", "골인"],
   "Room not found": ["Room not found", "방을 찾을 수 없습니다"],
   "Wrong password": ["Wrong password", "비밀번호가 틀렸습니다"],
+  checkmate: ["Checkmate", "체크메이트"],
+  stalemate: ["Stalemate", "스테일메이트"],
+  resign: ["Resigned", "기권"],
+  "draw-fifty": ["Fifty-move rule", "50수 규칙"],
+  "draw-material": ["Insufficient material", "기물 부족"],
+  "draw-repetition": ["Threefold repetition", "3회 동형반복"],
+  "titan-crush": ["Crushed by the Titan", "거신병에게 짓밟힘"],
+  "titan-explode": ["The Titan exploded", "거신병 폭발"],
 } as const satisfies Record<string, Entry>;
 
 export const GAME_NAME: Record<string, Entry> = {

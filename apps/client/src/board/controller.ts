@@ -3,9 +3,12 @@ import { el, type AppContext, type Screen } from "../router.js";
 import { menuScreen } from "../screens/menu.js";
 import { gameById } from "../games.js";
 import { createLocalBoardSession, type BoardSession } from "./session.js";
-import { getView, type BoardView } from "./views.js";
+import { getView, preloadBoardArt, type BoardView } from "./views.js";
 import { getAI } from "./ai.js";
 import { gameName, t, tPassthrough } from "../i18n.js";
+
+/** How long the final position stays visible before the result card covers it. */
+const GAME_OVER_DELAY_MS = 1100;
 
 /** Single-player entry for a board game: local session + AI, shared view. */
 export function makeLocalBoardGame(gameId: string): Screen {
@@ -36,6 +39,9 @@ export function mountBoardGame(
   let gameOverUp = false;
   let rematchPending = false;
   let opponentLeft = false;
+  // The overlay covers the board, so it waits a beat — otherwise the winning
+  // move is hidden behind the result card the instant it is played.
+  let overlayTimer: number | undefined;
 
   const canvas = el("canvas", { class: "board-canvas" }) as HTMLCanvasElement;
   canvas.width = 640;
@@ -98,11 +104,17 @@ export function mountBoardGame(
     const s = state();
     view.draw(g!, canvas.width, s);
     const res = mod.result(s);
-    if (res.done) { renderBars(s, null); showGameOver(); return; }
+    if (res.done) { renderBars(s, null); scheduleGameOver(); return; }
+    if (overlayTimer) { clearTimeout(overlayTimer); overlayTimer = undefined; }
     if (gameOverUp && !opponentLeft) { gameOverUp = false; rematchPending = false; overlay.classList.add("hidden"); overlay.replaceChildren(); }
     const turn = mod.turn(s);
     renderBars(s, turn);
     statusEl.textContent = turn === me ? t("game.yourTurn") : t("game.oppTurn");
+  }
+
+  function scheduleGameOver(): void {
+    if (gameOverUp || overlayTimer) return;
+    overlayTimer = window.setTimeout(() => { overlayTimer = undefined; showGameOver(); }, GAME_OVER_DELAY_MS);
   }
 
   function showGameOver(): void {
@@ -178,5 +190,8 @@ export function mountBoardGame(
   }
 
   render();
-  return () => session.dispose();
+  // Repaint once the piece art lands; the first frame may draw before it decodes.
+  void preloadBoardArt().then(render);
+
+  return () => { if (overlayTimer) clearTimeout(overlayTimer); session.dispose(); };
 }

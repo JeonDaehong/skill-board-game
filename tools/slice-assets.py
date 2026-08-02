@@ -39,6 +39,11 @@ SKILLS_B = ["cloak", "loyal-vassal", "undo", "one-more",
             None, None, "titan-fusion", "liberation"]
 PLATES = ["panel", "topbar", "banner", "button-gold", "button-wood", "button-wood-2",
           "avatar-frame"]
+# Janggi discs, blue side then red. The two blank discs are spares — the sheet was
+# a 4x4 and only 14 pieces exist.
+JANGGI = ["bk", "ba", "be", "bh", "br", "bc", "bs", None,
+          "wk", "wa", "we", "wh", "wr", "wc", "ws", None]
+STONES = ["black", "white"]
 
 
 def load(n):
@@ -254,6 +259,8 @@ def main():
     # sheet 9 replaces sheet 6's gomoku cell, which came with a wooden backdrop
     # baked in instead of a free-floating object.
     print("sheet 9 -> omok");     cut_subjects(9, 1, 1, ["omok"], "objects")
+    print("sheet 11 -> janggi");  cut_subjects(11, 4, 4, JANGGI, "janggi")
+    print("sheet 12 -> stones");  cut_subjects(12, 1, 2, STONES, "stones")
     print("sheet 4 -> frames");   cut_frames()
     print("sheet 8 -> ui");       cut_plates()
 

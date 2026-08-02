@@ -32,6 +32,47 @@ const HINT = "rgba(216, 180, 90, 0.45)";
 const STONE_B = "#140d08";
 const STONE_W = "#efe4cb";
 
+/**
+ * Painted piece art, shared by every board. Loaded once; until it arrives (or if
+ * a file is missing) the views fall back to the flat discs they drew before, so
+ * a board is never blank.
+ */
+const ART: Record<string, HTMLImageElement> = {};
+const JANGGI_CODES = ["bk", "ba", "be", "bh", "br", "bc", "bs", "wk", "wa", "we", "wh", "wr", "wc", "ws"];
+
+export function preloadBoardArt(): Promise<void> {
+  const files: [string, string][] = [
+    ...JANGGI_CODES.map((c) => [`janggi/${c}`, `/assets/janggi/${c}.png`] as [string, string]),
+    ["stone/b", "/assets/stones/black.png"],
+    ["stone/w", "/assets/stones/white.png"],
+  ];
+  return Promise.all(
+    files.map(([key, url]) => new Promise<void>((resolve) => {
+      const img = new Image();
+      img.onload = () => { ART[key] = img; resolve(); };
+      img.onerror = () => resolve();
+      img.src = url;
+    })),
+  ).then(() => undefined);
+}
+
+/** Draw a piece sprite centred on (cx, cy) at diameter 2r. Returns false if the
+ *  art has not loaded, so the caller can fall back to its flat rendering. */
+function sprite(ctx: CanvasRenderingContext2D, key: string, cx: number, cy: number, r: number): boolean {
+  const img = ART[key];
+  if (!img) return false;
+  ctx.drawImage(img, cx - r, cy - r, r * 2, r * 2);
+  return true;
+}
+
+function ring(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number): void {
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.strokeStyle = LAST;
+  ctx.lineWidth = r * 0.2;
+  ctx.stroke();
+}
+
 function boardBase(ctx: CanvasRenderingContext2D, px: number): void {
   ctx.fillStyle = BOARD_BG;
   ctx.fillRect(0, 0, px, px);
@@ -65,7 +106,12 @@ function omokView(): BoardView<OmokState, OmokMove> {
       for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
         const c = s.board[y * N + x];
         if (!c) continue;
-        disc(ctx, (x + 0.5) * cs, (y + 0.5) * cs, cs * 0.42, c === "b" ? STONE_B : STONE_W, s.last === y * N + x);
+        const px_ = (x + 0.5) * cs, py_ = (y + 0.5) * cs, r = cs * 0.46;
+        if (sprite(ctx, `stone/${c}`, px_, py_, r)) {
+          if (s.last === y * N + x) ring(ctx, px_, py_, r * 0.92);
+        } else {
+          disc(ctx, px_, py_, cs * 0.42, c === "b" ? STONE_B : STONE_W, s.last === y * N + x);
+        }
       }
     },
     click(s, cx, cy, px) {
@@ -147,14 +193,17 @@ function janggiView(): BoardView<JanggiState, JanggiMove> {
         if (dests.includes(y * W + x)) { ctx.fillStyle = HINT; ctx.beginPath(); ctx.arc(gx(x, csx), gy(y, csy), cs * 0.16, 0, Math.PI * 2); ctx.fill(); }
         const p = s.board[y * W + x];
         if (!p) continue;
-        const r = cs * 0.4;
+        const r = cs * 0.46;
         const isB = p.c === "b";
-        disc(ctx, gx(x, csx), gy(y, csy), r, isB ? "#1c3f6e" : "#7a2424");
-        if (sel && sel[0] === x && sel[1] === y) { ctx.strokeStyle = "#f0e0b8"; ctx.lineWidth = r * 0.18; ctx.beginPath(); ctx.arc(gx(x, csx), gy(y, csy), r, 0, Math.PI * 2); ctx.stroke(); }
-        ctx.fillStyle = isB ? "#cfe0ff" : "#ffd9d9";
-        ctx.font = `700 ${Math.floor(r * 1.1)}px "Gowun Batang", serif`;
-        ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        ctx.fillText(JGLYPH[p.t]![isB ? 0 : 1], gx(x, csx), gy(y, csy) + r * 0.06);
+        const px_ = gx(x, csx), py_ = gy(y, csy);
+        if (!sprite(ctx, `janggi/${p.c}${p.t}`, px_, py_, r)) {
+          disc(ctx, px_, py_, r * 0.87, isB ? "#1c3f6e" : "#7a2424");
+          ctx.fillStyle = isB ? "#cfe0ff" : "#ffd9d9";
+          ctx.font = `700 ${Math.floor(r * 0.95)}px "Gowun Batang", serif`;
+          ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.fillText(JGLYPH[p.t]![isB ? 0 : 1], px_, py_ + r * 0.06);
+        }
+        if (sel && sel[0] === x && sel[1] === y) { ctx.strokeStyle = "#f0e0b8"; ctx.lineWidth = r * 0.16; ctx.beginPath(); ctx.arc(px_, py_, r, 0, Math.PI * 2); ctx.stroke(); }
       }
     },
     info(s, player) {

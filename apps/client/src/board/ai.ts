@@ -62,7 +62,8 @@ function omokCandidates(s: OmokState): OmokMove[] {
     scored.push({ m: { x, y }, score: omokScore(b, x, y, s.turn) + 0.8 * omokScore(b, x, y, other(s.turn)) });
   }
   scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, 10).map((c) => c.m);
+  // Widened alongside the deeper search: 10 candidates was starving it.
+  return scored.slice(0, 14).map((c) => c.m);
 }
 
 export function omokAI(s: OmokState): OmokMove | null {
@@ -72,7 +73,7 @@ export function omokAI(s: OmokState): OmokMove | null {
   const cands = omokCandidates(s);
   for (const c of cands) { const t = b.slice(); t[oidx(c.x, c.y)] = me; if (makesFive(t, c.x, c.y, me)) return c; }
   for (const c of cands) { const t = b.slice(); t[oidx(c.x, c.y)] = opp; if (makesFive(t, c.x, c.y, opp)) return c; }
-  return chooseBySearch(omok, s, me, { evaluate: omokEval, moves: omokCandidates, maxDepth: 6, timeMs: 700 });
+  return chooseBySearch(omok, s, me, { evaluate: omokEval, moves: omokCandidates, maxDepth: 12, timeMs: 2600 });
 }
 
 // ── Othello (positional + mobility, endgame solve) ───────────
@@ -124,7 +125,7 @@ function othelloCandidates(s: OthelloState): OthelloMove[] {
   return othello.legalMoves(s).sort((a, b) => OTH_W[b.y * 8 + b.x]! - OTH_W[a.y * 8 + a.x]!);
 }
 export function othelloAI(s: OthelloState): OthelloMove | null {
-  return chooseBySearch(othello, s, s.turn, { evaluate: othelloEval, moves: othelloCandidates, maxDepth: 16, timeMs: 1000 });
+  return chooseBySearch(othello, s, s.turn, { evaluate: othelloEval, moves: othelloCandidates, maxDepth: 20, timeMs: 2600 });
 }
 
 // ── Janggi (material + captures-first ordering) ──────────────
@@ -143,7 +144,7 @@ function janggiCandidates(s: JanggiState): JanggiMove[] {
   return janggi.legalMoves(s).sort((a, b) => capVal(s, b) - capVal(s, a));
 }
 export function janggiAI(s: JanggiState): JanggiMove | null {
-  return chooseBySearch(janggi, s, s.turn, { evaluate: janggiEval, moves: janggiCandidates, maxDepth: 4, timeMs: 800 });
+  return chooseBySearch(janggi, s, s.turn, { evaluate: janggiEval, moves: janggiCandidates, maxDepth: 8, timeMs: 2800 });
 }
 
 // ── Quoridor (shortest-path eval + focused wall pruning) ─────
@@ -191,7 +192,7 @@ function quoridorCandidates(s: QuoridorState): QuoridorMove[] {
   return [...pawns, ...walls];
 }
 export function quoridorAI(s: QuoridorState): QuoridorMove | null {
-  return chooseBySearch(quoridor, s, s.turn, { evaluate: quoridorEval, moves: quoridorCandidates, maxDepth: 4, timeMs: 1000 });
+  return chooseBySearch(quoridor, s, s.turn, { evaluate: quoridorEval, moves: quoridorCandidates, maxDepth: 6, timeMs: 2600 });
 }
 
 // ── registry ─────────────────────────────────────────────────
