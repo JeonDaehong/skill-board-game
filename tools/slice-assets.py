@@ -28,6 +28,8 @@ GAMES_SHOP = ["chess", "janggi", "omok", "dice-generic", "pack-starter",
               "queen-gold", "pack-premium", "theme-board", "boost", "trophy"]
 TEXTURES = ["stone-light", "wood-dark", "wood-kaya", "parchment"]
 FRAMES = ["common", "uncommon", "rare", "epic", "legendary"]
+# All frames are resampled to this 5:7 canvas so their geometry is comparable.
+FRAME_SIZE = (250, 350)
 # Sheets 10 and 3 both came back as 3x4 rather than the 2x5 that was asked for,
 # with two scenes duplicated on each. All ten uniques are present, so `None`
 # simply drops the redundant copy.
@@ -213,8 +215,16 @@ def cut_frames():
     row = im[0:int(h * 0.50), :]
     for i, name in enumerate(FRAMES):
         cell = row[:, int(i * w / 5):int((i + 1) * w / 5)]
-        save(largest_piece(key_out(cell)), "frames", name)
-        print(f"  frames/{name}")
+        card = largest_piece(key_out(cell))
+        # Normalise to one canvas so every frame is scaled identically by the
+        # browser. They come out of the sheet at slightly different sizes and
+        # aspect ratios, which stretched each one differently against the 5:7
+        # card box and shifted where the text and cost gem landed.
+        img = Image.fromarray(card.astype(np.uint8), "RGBA").resize(FRAME_SIZE, Image.LANCZOS)
+        d = os.path.join(ROOT, "frames")
+        os.makedirs(d, exist_ok=True)
+        img.save(os.path.join(d, f"{name}.png"))
+        print(f"  frames/{name}  ({FRAME_SIZE[0]}x{FRAME_SIZE[1]})")
 
 
 def cut_plates():

@@ -72,6 +72,23 @@ function cardEl(skill: Skill, size: "xs" | "sm" | "lg"): HTMLElement {
 }
 
 /**
+ * Shrink a card title until it fits its banner. A few English names ("King's
+ * Return") overrun the painted banner at the pool size, and clipping them to an
+ * ellipsis loses the card's identity — which is the one thing that has to read.
+ * Runs after the node is in the document, since it measures layout.
+ */
+function fitNames(root: HTMLElement): void {
+  root.querySelectorAll<HTMLElement>(".tcg-name").forEach((node) => {
+    node.style.fontSize = "";
+    const avail = node.clientWidth;
+    if (!avail || node.scrollWidth <= avail) return;
+    const base = parseFloat(getComputedStyle(node).fontSize);
+    const scaled = Math.max(base * (avail / node.scrollWidth) * 0.97, base * 0.62);
+    node.style.fontSize = `${scaled}px`;
+  });
+}
+
+/**
  * Deck Builder: browse the full card pool as art, inspect one card blown up,
  * and add copies until the deck is full. Card effects aren't implemented yet —
  * this builds and persists the deck list itself (localStorage, per game).
@@ -237,6 +254,7 @@ export const deckScreen: Screen = (ctx: AppContext) => {
         ]),
       ]),
     );
+    fitNames(inspector);
   }
 
   function renderPool(): void {
@@ -268,6 +286,7 @@ export const deckScreen: Screen = (ctx: AppContext) => {
         return card;
       }),
     );
+    fitNames(grid);
   }
 
   function renderTray(): void {

@@ -567,29 +567,36 @@ button { font-family: inherit; }
   transition: transform 0.16s ease, filter 0.16s ease;
 }
 
-/* Per-frame geometry, measured off each PNG. The five frames are hand-painted
-   and their interiors are not aligned — the panel centre wanders between 45%
-   and 55% of the card — so text centred on the card drifts off the banner. */
+/* Per-frame geometry, measured off each frame PNG by tools/measure-frames.py.
+   The five frames are hand-painted: their painted interiors do not line up with
+   each other, and the cost socket sits anywhere from 13.6% to 23.1% across the
+   card. Anything centred on the card itself drifts off the artwork, so every box
+   is carried per rarity instead. */
 .tcg-card.t-common { --tg: rgba(190, 168, 118, 0.5);
-  --gx: 21.5%; --gy: 13.0%;
-  --px0: 19.6%; --px1: 9.8%; --py0: 65.6%; --py1: 9.0%; --by0: 54.8%; --bh: 10.8%;
-  --ax0: 18.1%; --ax1: 8.3%; --ay0: 11.6%; --ay1: 43.2%; }
+  --gx: 23.1%; --gy: 14.4%; --gd: 15.3%;
+  --px0: 19.6%; --px1: 9.2%; --py0: 65.7%; --py1: 8.9%;
+  --by0: 54.9%; --bh: 10.9%;
+  --ax0: 18.5%; --ax1: 8.1%; --ay0: 12.2%; --ay1: 43.4%; }
 .tcg-card.t-uncommon { --tg: rgba(127, 174, 74, 0.5);
-  --gx: 13.0%; --gy: 11.0%;
-  --px0: 12.6%; --px1: 11.5%; --py0: 65.1%; --py1: 8.6%; --by0: 53.9%; --bh: 11.2%;
-  --ax0: 11.1%; --ax1: 10.0%; --ay0: 9.2%; --ay1: 44.1%; }
+  --gx: 16.2%; --gy: 12.0%; --gd: 16.6%;
+  --px0: 12.4%; --px1: 10.8%; --py0: 65.1%; --py1: 8.3%;
+  --by0: 54.0%; --bh: 11.1%;
+  --ax0: 11.7%; --ax1: 10.1%; --ay0: 9.6%; --ay1: 44.2%; }
 .tcg-card.t-rare { --tg: rgba(90, 131, 196, 0.55);
-  --gx: 16.5%; --gy: 16.0%;
-  --px0: 15.6%; --px1: 16.6%; --py0: 65.6%; --py1: 9.0%; --by0: 54.8%; --bh: 10.8%;
-  --ax0: 14.6%; --ax1: 14.6%; --ay0: 11.6%; --ay1: 43.2%; }
+  --gx: 19.4%; --gy: 14.4%; --gd: 15.3%;
+  --px0: 16.0%; --px1: 16.0%; --py0: 65.7%; --py1: 8.6%;
+  --by0: 54.9%; --bh: 10.9%;
+  --ax0: 14.9%; --ax1: 14.5%; --ay0: 12.2%; --ay1: 43.4%; }
 .tcg-card.t-epic { --tg: rgba(154, 99, 200, 0.55);
-  --gx: 13.0%; --gy: 15.0%;
-  --px0: 11.2%; --px1: 18.0%; --py0: 65.6%; --py1: 9.0%; --by0: 54.8%; --bh: 10.8%;
-  --ax0: 9.2%; --ax1: 16.0%; --ay0: 11.6%; --ay1: 43.2%; }
+  --gx: 14.3%; --gy: 14.0%; --gd: 14.6%;
+  --px0: 11.2%; --px1: 17.6%; --py0: 65.7%; --py1: 8.9%;
+  --by0: 54.9%; --bh: 10.9%;
+  --ax0: 10.1%; --ax1: 16.5%; --ay0: 12.2%; --ay1: 43.4%; }
 .tcg-card.t-legendary { --tg: rgba(224, 150, 70, 0.65);
-  --gx: 12.5%; --gy: 17.0%;
-  --px0: 9.3%; --px1: 19.0%; --py0: 65.6%; --py1: 9.0%; --by0: 54.8%; --bh: 10.8%;
-  --ax0: 7.3%; --ax1: 18.0%; --ay0: 12.0%; --ay1: 43.2%; }
+  --gx: 13.6%; --gy: 14.7%; --gd: 15.9%;
+  --px0: 9.2%; --px1: 16.4%; --py0: 65.7%; --py1: 8.6%;
+  --by0: 54.9%; --bh: 10.9%;
+  --ax0: 10.1%; --ax1: 18.1%; --ay0: 12.5%; --ay1: 43.4%; }
 
 .tcg-art { position: absolute; left: var(--ax0); right: var(--ax1); top: var(--ay0); bottom: var(--ay1); overflow: hidden; z-index: 1; }
 .tcg-art-img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -597,7 +604,7 @@ button { font-family: inherit; }
 
 .tcg-gem {
   position: absolute; left: var(--gx); top: var(--gy); z-index: 3;
-  width: 14%; aspect-ratio: 1;
+  width: var(--gd); aspect-ratio: 1;
   transform: translate(-50%, -50%);
   display: grid; place-items: center;
   font-family: var(--display); font-weight: 700; color: #fff;
