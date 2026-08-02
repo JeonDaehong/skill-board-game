@@ -1,7 +1,7 @@
 import type { MatchEvent, MatchState } from "@skill/engine";
 import type { Color } from "@skill/chess-core";
 
-/** Summary of a joinable room, shown in the 참여하기 list. */
+/** Summary of a joinable room, shown in the Join Room list. */
 export interface RoomInfo {
   code: string;
   title: string;

@@ -26,13 +26,14 @@ export function createApp(root: HTMLElement): AppContext {
   return ctx;
 }
 
-/** Small DOM helper: create an element with class/text/children. */
+/** Small DOM helper: create an element with class/text/attrs/children. */
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   opts: {
     class?: string;
     text?: string;
     html?: string;
+    attrs?: Record<string, string>;
     onclick?: (e: MouseEvent) => void;
   } = {},
   children: (Node | null)[] = [],
@@ -41,6 +42,7 @@ export function el<K extends keyof HTMLElementTagNameMap>(
   if (opts.class) node.className = opts.class;
   if (opts.text !== undefined) node.textContent = opts.text;
   if (opts.html !== undefined) node.innerHTML = opts.html;
+  if (opts.attrs) for (const [k, v] of Object.entries(opts.attrs)) node.setAttribute(k, v);
   if (opts.onclick) node.onclick = opts.onclick;
   for (const child of children) if (child) node.appendChild(child);
   return node;

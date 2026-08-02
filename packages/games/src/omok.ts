@@ -76,8 +76,8 @@ export const omok: GameModule<OmokState, OmokMove> = {
   },
 
   result(s): GameResult {
-    if (s.winner) return { done: true, winner: s.winner, reason: "5목" };
-    if (s.board.every((c) => c !== null)) return { done: true, winner: "draw", reason: "무승부" };
+    if (s.winner) return { done: true, winner: s.winner, reason: "Five in a row" };
+    if (s.board.every((c) => c !== null)) return { done: true, winner: "draw", reason: "Board full" };
     return { done: false, winner: null };
   },
 };

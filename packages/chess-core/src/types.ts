@@ -68,29 +68,29 @@ export interface GameState {
  * keeps the engine correct and readable while staying extensible.
  */
 export interface SkillRules {
-  /** 농민 봉기: the listed colors' pawns may capture the piece directly ahead. */
+  /** Peasant Revolt: the listed colors' pawns may capture the piece directly ahead. */
   peasantRevolt?: Partial<Record<Color, boolean>>;
   /**
-   * 민첩한 나이트: the listed colors' knights gain a Janggi-elephant-style
+   * Agile Knight: the listed colors' knights gain a Janggi-elephant-style
    * forward jump (one step forward + two diagonal, net (±2, +3) toward the
    * enemy) in addition to normal knight moves.
    */
   agileKnight?: Partial<Record<Color, boolean>>;
   /**
-   * 혼란: rook and bishop swap movement roles for BOTH sides — bishops move
+   * Chaos: rook and bishop swap movement roles for BOTH sides — bishops move
    * like rooks (orthogonal), rooks move like bishops (diagonal). Queens are
    * unaffected.
    */
   chaos?: boolean;
   /**
-   * 유령 기물: the listed colors' sliding pieces may pass over friendly pieces
+   * Phantom: the listed colors' sliding pieces may pass over friendly pieces
    * (enemies still block). Applied only for that side's own move generation;
    * it does not change attack/check detection (a jump affects the path, not the
    * final attacking square).
    */
   phantom?: Partial<Record<Color, boolean>>;
   /**
-   * 철벽 방어: pieces on these squares cannot be captured. They still occupy
+   * Iron Guard: pieces on these squares cannot be captured. They still occupy
    * the square (so they block sliders), but no capture move may land on them.
    */
   protected?: Square[];

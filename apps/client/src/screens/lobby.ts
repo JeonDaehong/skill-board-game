@@ -2,6 +2,7 @@ import { el, type AppContext, type Screen } from "../router.js";
 import { driveMatchmaking } from "../net.js";
 import { gameById } from "../games.js";
 import { multiScreen } from "./multi.js";
+import { art, objectUrl } from "../ui/art.js";
 
 /**
  * Quickstart lobby: connect, ask the server to auto-match us for `gameId`,
@@ -10,18 +11,21 @@ import { multiScreen } from "./multi.js";
 export function makeQuickLobby(gameId: string): Screen {
   return (ctx: AppContext) => {
     const game = gameById(gameId);
-    const statusLine = el("div", { class: "lobby-status", text: "서버에 연결 중…" });
+    const statusLine = el("div", { class: "lobby-status", text: "Connecting…" });
     const setStatus = (t: string) => (statusLine.textContent = t);
 
     ctx.root.appendChild(
       el("div", { class: "screen lobby-screen" }, [
         el("div", { class: "glass lobby-card" }, [
           el("div", { class: "spinner" }),
-          el("h1", { class: "screen-title", text: "퀵스타트" }),
-          el("div", { class: "lobby-game", text: `${game?.icon ?? ""} ${game?.name ?? gameId}` }),
+          el("h1", { class: "screen-title", text: "Quick Match" }),
+          el("div", { class: "lobby-game" }, [
+            art(objectUrl(gameId), "lobby-game-icon"),
+            el("span", { text: game?.name ?? gameId }),
+          ]),
           statusLine,
-          el("div", { class: "carousel-hint", text: "같은 게임으로 접속한 다른 플레이어와 매칭됩니다" }),
-          el("button", { class: "btn btn-ghost", text: "← 취소", onclick: () => ctx.navigate(multiScreen) }),
+          el("div", { class: "carousel-hint", text: "Matching you with another player in the same game" }),
+          el("button", { class: "btn btn-ghost", text: "← Cancel", onclick: () => ctx.navigate(multiScreen) }),
         ]),
       ]),
     );
@@ -29,9 +33,9 @@ export function makeQuickLobby(gameId: string): Screen {
     const mm = driveMatchmaking(
       ctx,
       {
-        onWaiting: () => setStatus("상대를 기다리는 중…"),
+        onWaiting: () => setStatus("Waiting for an opponent…"),
         onError: (msg) => setStatus(msg),
-        onOpponentLeft: () => setStatus("상대가 나갔습니다"),
+        onOpponentLeft: () => setStatus("Opponent left"),
       },
       { type: "quickstart", gameId, deck: [] },
     );

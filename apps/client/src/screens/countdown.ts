@@ -13,7 +13,7 @@ export function makeCountdown(next: Screen): Screen {
     ]);
     ctx.root.appendChild(screen);
 
-    const steps = ["3", "2", "1", "시작!"];
+    const steps = ["3", "2", "1", "GO!"];
     let i = 0;
     const timers: number[] = [];
 

@@ -1,69 +1,72 @@
 # Skill Board Game
 
-스킬 보드게임. 1단계는 **정통 체스**를 코드로만(에디터 없이) 구현하고, 이후 스킬 시스템 → 멀티플레이어 → Steam(PC) / Google Play(모바일)로 확장한다.
+A board game platform with a skill/card layer on top. Classic rules first, then
+skills → multiplayer → Steam (PC) / Google Play (mobile). Written entirely in
+code — no GUI editor.
 
-## 기술 스택
+Three games ship right now: **Chess**, **Janggi**, and **Gomoku**.
 
-- **TypeScript** 순수 코드 — GUI 에디터 없음
-- **렌더링**: HTML Canvas (이미지 에셋 없이 유니코드 글리프)
-- **빌드/개발**: Vite
-- **테스트**: Vitest
-- **패키지 관리**: pnpm workspace (모노레포)
+## Stack
 
-향후: 멀티는 Node + WebSocket(`apps/server`), Steam은 Tauri/Electron 래핑, 모바일은 Capacitor.
+- **TypeScript** only — no GUI editor
+- **Rendering**: HTML Canvas (unicode glyphs, no image assets)
+- **Build / dev**: Vite
+- **Tests**: Vitest
+- **Packages**: pnpm workspace (monorepo)
+- **Multiplayer**: Node + WebSocket (`packages/server`)
 
-## 구조
+Later: Steam via Tauri/Electron wrapping, mobile via Capacitor.
+
+## Layout
 
 ```
 skill-board-game/
 ├── packages/
-│   └── chess-core/     순수 체스 규칙 엔진 (DOM 없음, 완전 테스트됨)
-│       └── src/
-│           ├── types.ts    타입 정의 (Piece, Move, GameState...)
-│           ├── board.ts     보드/FEN 파싱·직렬화, 좌표 변환
-│           ├── moves.ts     이동 생성·공격 판정·이동 적용
-│           ├── game.ts       ChessGame 클래스 + 승패/무승부 판정
-│           └── perft.ts      이동생성 검증용 perft
+│   ├── chess-core/   pure chess rules engine (no DOM, fully tested)
+│   ├── engine/       deterministic match reducer — shared by client and server
+│   ├── games/        the other board games (janggi, omok, othello, quoridor)
+│   └── server/       Node + ws: rooms, matchmaking, authoritative reduce
 └── apps/
-    └── client/         Vite 앱 — 화면 라우터 기반 (프레임워크 없음, 순수 DOM/Canvas)
+    └── client/       Vite app — screen router, plain DOM/Canvas, no framework
         └── src/
-            ├── main.ts            부트스트랩 (라우터 → 메인 메뉴)
-            ├── router.ts          화면 전환 라우터 + DOM 헬퍼
-            ├── games.ts           캐러셀 게임 목록 (체스 외 6칸)
-            ├── render.ts          Canvas 보드/말 렌더러
-            ├── screens/
-            │   ├── menu.ts        메인 메뉴 (Single/Multi/Option/Quit)
-            │   ├── select.ts      coverflow 게임 선택 캐러셀
-            │   ├── countdown.ts   3·2·1 카운트다운
-            │   └── option.ts      설정(플레이스홀더)
-            └── chess/
-                ├── controller.ts  체스 화면 (입력·프로모션·게임오버·AI 연결)
-                └── ai.ts          negamax + alpha-beta AI (chess-core 재사용)
+            ├── main.ts         bootstrap (router → main menu)
+            ├── router.ts       screen router + DOM helpers
+            ├── games.ts        the game list shown in the picker
+            ├── deck-config.ts  per-game deck / hand / clock rules
+            ├── skills.ts       skill card definitions
+            ├── net.ts          matchmaking socket + handoff to the game view
+            ├── render.ts       canvas board/piece renderer
+            ├── screens/        menu, picker, deck builder, rooms, profile, shop
+            ├── chess/          chess screen + AI (negamax + alpha-beta)
+            └── board/          shared board-game screen + per-game views
 ```
 
-**핵심 설계 원칙**: 규칙 로직(`chess-core`)은 렌더링·네트워크와 완전히 분리한다.
-같은 엔진을 클라이언트 + 서버(멀티) + 모바일에서 재사용하고, GUI 없이 유닛
-테스트로 규칙을 검증하며, 나중에 "스킬"을 붙일 때 로직만 확장한다.
+**Core design rule**: rules logic (`chess-core`, `games`, `engine`) is fully
+separated from rendering and networking. The same engine runs on the client, the
+server, and mobile; rules are verified by unit tests without a GUI; the skill
+layer extends the logic only.
 
-## 실행
+## Running
 
 ```bash
 pnpm install
-pnpm dev              # 클라이언트 개발 서버 (http://localhost:5173)
-pnpm test             # 전체 테스트
-pnpm build            # 전체 빌드
+pnpm dev              # client dev server (http://localhost:5173)
+pnpm server           # multiplayer server (ws://localhost:8787)
+pnpm test             # all tests
+pnpm build            # build everything
 ```
 
-## 구현 현황
+## Status
 
-- [x] 정통 체스 규칙 (이동, 캐슬링, 앙파상, 프로모션)
-- [x] 체크 / 체크메이트 / 스테일메이트 / 무승부(50수·기물부족) 판정
-- [x] perft 검증 (start depth 4 = 197,281, Kiwipete depth 3 = 97,862 통과)
-- [x] Canvas 렌더링 + 클릭 이동 + 합법수 하이라이트 + 보드 뒤집기
-- [x] 메인 메뉴 + coverflow 게임 선택 캐러셀(7칸) + 3·2·1 카운트다운
-- [x] AI 상대 (negamax + alpha-beta, 기물+위치 평가)
-- [ ] 오목 등 나머지 게임 6종
-- [ ] 스킬 시스템 (말에 능력 부여)
-- [ ] 멀티플레이어 (서버 권위형)
-- [ ] Steam(PC) 패키징 (Tauri/Electron)
-- [ ] 모바일(Google Play) 패키징 (Capacitor)
+- [x] Full chess rules (moves, castling, en passant, promotion)
+- [x] Check / checkmate / stalemate / draws (50-move, insufficient material)
+- [x] perft verified (start depth 4 = 197,281; Kiwipete depth 3 = 97,862)
+- [x] Canvas rendering, click-to-move, legal-move highlights, board flip
+- [x] Main menu, game picker carousel, 3·2·1 countdown
+- [x] AI opponent (negamax + alpha-beta, material + position eval)
+- [x] Janggi and Gomoku with their own AI
+- [x] Online play: quick match, create/join rooms, invite codes, rematch
+- [x] Deterministic match reducer (`@skill/engine`) shared by client and server
+- [ ] Card deck system — deck builder saves selections; card effects not wired up
+- [ ] Steam (PC) packaging (Tauri/Electron)
+- [ ] Mobile (Google Play) packaging (Capacitor)

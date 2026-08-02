@@ -16,7 +16,7 @@ export function makeSkillSelect(next: (skillIds: string[]) => Screen): Screen {
     const counter = el("div", { class: "skill-counter" });
     const startBtn = el("button", {
       class: "start-btn",
-      text: "시작",
+      text: "Start",
       onclick: () => ctx.navigate(next([...selected])),
     }) as HTMLButtonElement;
 
@@ -42,14 +42,14 @@ export function makeSkillSelect(next: (skillIds: string[]) => Screen): Screen {
           ? el("div", { class: "skill-art" })
           : el("div", { class: "skill-art placeholder" }, [
               el("span", { class: "skill-art-icon", text: skill.icon }),
-              el("span", { class: "skill-art-hint", text: "이미지" }),
+              el("span", { class: "skill-art-hint", text: "Art" }),
             ]);
         if (skill.image) art.style.backgroundImage = `url("${skill.image}")`;
 
         const tags: (Node | null)[] = [
-          el("span", { class: `tag type-${skill.type}`, text: skill.type === "active" ? "액티브" : "패시브" }),
-          skill.cooldown ? el("span", { class: "tag cd", text: `쿨 ${skill.cooldown}` }) : null,
-          skill.usesPerGame ? el("span", { class: "tag uses", text: `${skill.usesPerGame}회` }) : null,
+          el("span", { class: `tag type-${skill.type}`, text: skill.type === "active" ? "Active" : "Passive" }),
+          skill.cooldown ? el("span", { class: "tag cd", text: `CD ${skill.cooldown}` }) : null,
+          skill.usesPerGame ? el("span", { class: "tag uses", text: `${skill.usesPerGame}×` }) : null,
         ];
 
         const card = el("div", { class: "skill-card" }, [
@@ -86,8 +86,8 @@ export function makeSkillSelect(next: (skillIds: string[]) => Screen): Screen {
 
     const screen = el("div", { class: "screen skill-screen" }, [
       el("div", { class: "skill-topbar" }, [
-        el("button", { class: "back-btn", text: "← 뒤로", onclick: () => ctx.navigate(menuScreen) }),
-        el("h1", { class: "screen-title", text: "스킬 선택" }),
+        el("button", { class: "back-btn", text: "← Back", onclick: () => ctx.navigate(menuScreen) }),
+        el("h1", { class: "screen-title", text: "Select Skills" }),
         counter,
       ]),
       grid,

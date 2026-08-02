@@ -44,9 +44,9 @@ export function mountBoardGame(
   ctx.root.appendChild(
     el("div", { class: "screen chess-screen" }, [
       el("div", { class: "game-topbar" }, [
-        el("button", { class: "back-btn", text: "← 나가기", onclick: onExit }),
+        el("button", { class: "back-btn", text: "← Leave", onclick: onExit }),
         el("div", { class: "game-heading" }, [el("span", { text: game?.name ?? gameId })]),
-        el("div", { class: "icon-btn", text: me === "b" ? "선공" : "후공" }),
+        el("div", { class: "icon-btn", text: me === "b" ? "First" : "Second" }),
       ]),
       statusEl,
       el("div", { class: "board-wrap" }, [canvas, overlay]),
@@ -67,27 +67,27 @@ export function mountBoardGame(
     const res = mod.result(s);
     if (res.done) { showGameOver(); return; }
     if (gameOverUp && !opponentLeft) { gameOverUp = false; rematchPending = false; overlay.classList.add("hidden"); overlay.replaceChildren(); }
-    statusEl.textContent = mod.turn(s) === me ? "당신 차례" : "상대 차례…";
+    statusEl.textContent = mod.turn(s) === me ? "Your turn" : "Opponent's turn…";
   }
 
   function showGameOver(): void {
     const res = mod.result(state());
-    const msg = res.winner === "draw" ? "무승부" : res.winner === me ? "승리! 🎉" : "패배";
-    statusEl.textContent = opponentLeft ? `${msg} · 상대가 나갔습니다` : `${msg}${res.reason ? ` · ${res.reason}` : ""}`;
+    const msg = res.winner === "draw" ? "Draw" : res.winner === me ? "Victory! 🎉" : "Defeat";
+    statusEl.textContent = opponentLeft ? `${msg} · Opponent left` : `${msg}${res.reason ? ` · ${res.reason}` : ""}`;
 
     const actions: HTMLElement[] = [];
     if (opponentLeft) {
-      actions.push(el("div", { class: "overlay-note", text: "상대가 나갔습니다" }));
+      actions.push(el("div", { class: "overlay-note", text: "Opponent left" }));
     } else if (rematchPending) {
-      actions.push(el("button", { class: "start-btn waiting", text: "상대 대기 중…" }));
+      actions.push(el("button", { class: "start-btn waiting", text: "Waiting for opponent…" }));
     } else {
       actions.push(el("button", {
         class: "start-btn",
-        text: "다시하기",
+        text: "Rematch",
         onclick: () => { rematchPending = true; showGameOver(); session.rematch(); },
       }));
     }
-    actions.push(el("button", { class: "back-btn", text: "메뉴로", onclick: () => ctx.navigate(menuScreen) }));
+    actions.push(el("button", { class: "back-btn", text: "Menu", onclick: () => ctx.navigate(menuScreen) }));
 
     overlay.replaceChildren(
       el("div", { class: "overlay-card" }, [
@@ -100,12 +100,12 @@ export function mountBoardGame(
   }
 
   function showOpponentLeft(): void {
-    statusEl.textContent = "상대가 나갔습니다";
+    statusEl.textContent = "Opponent left";
     overlay.replaceChildren(
       el("div", { class: "overlay-card" }, [
-        el("div", { class: "overlay-msg", text: "상대가 나갔습니다" }),
+        el("div", { class: "overlay-msg", text: "Opponent left" }),
         el("div", { class: "overlay-actions" }, [
-          el("button", { class: "back-btn", text: "메뉴로", onclick: () => ctx.navigate(menuScreen) }),
+          el("button", { class: "back-btn", text: "Menu", onclick: () => ctx.navigate(menuScreen) }),
         ]),
       ]),
     );

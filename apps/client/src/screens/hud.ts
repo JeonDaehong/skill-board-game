@@ -1,4 +1,5 @@
 import { el, type AppContext } from "../router.js";
+import { icon } from "../ui/art.js";
 
 /**
  * Persistent top HUD bar (game-launcher style): brand mark on the left,
@@ -15,13 +16,13 @@ export function topHud(ctx: AppContext): HTMLElement {
   brand.onclick = () => void import("./menu.js").then((m) => ctx.navigate(m.menuScreen));
 
   const currency = el("button", { class: "hud-chip currency" }, [
-    el("span", { class: "coin", text: "🪙" }),
+    icon("coin", "coin"),
     el("span", { class: "hud-amount", text: "0" }),
   ]);
   currency.onclick = () => void import("./shop.js").then((m) => ctx.navigate(m.shopScreen));
 
   const player = el("button", { class: "hud-chip player" }, [
-    el("span", { class: "hud-avatar", text: "🐺" }),
+    icon("avatar", "hud-avatar"),
     el("div", { class: "hud-player" }, [
       el("span", { class: "hud-nick", text: nick }),
       el("span", { class: "hud-lv", text: "LV.1" }),

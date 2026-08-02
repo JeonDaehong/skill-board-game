@@ -211,8 +211,8 @@ export const quoridor: GameModule<QuoridorState, QuoridorMove> = {
   },
 
   result(s): GameResult {
-    if (s.pb[1] === N - 1) return { done: true, winner: "b", reason: "골인" };
-    if (s.pw[1] === 0) return { done: true, winner: "w", reason: "골인" };
+    if (s.pb[1] === N - 1) return { done: true, winner: "b", reason: "Reached the goal" };
+    if (s.pw[1] === 0) return { done: true, winner: "w", reason: "Reached the goal" };
     return { done: false, winner: null };
   },
 };

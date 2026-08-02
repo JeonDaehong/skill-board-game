@@ -2,7 +2,7 @@ import { other, type GameModule, type GameResult, type Player } from "./types.js
 
 // Korean chess. 9 files (x 0..8) × 10 ranks (y 0..9). "b" starts at the bottom
 // (y 0..3) and moves upward; "w" mirrors at the top. Basic ruleset: capturing
-// the enemy General (장) wins — no check/checkmate enforcement.
+// the enemy General wins — no check/checkmate enforcement.
 
 export const JANGGI_W = 9;
 export const JANGGI_H = 10;
@@ -168,8 +168,8 @@ export const janggi: GameModule<JanggiState, JanggiMove> = {
   },
 
   result(s): GameResult {
-    if (s.winner) return { done: true, winner: s.winner, reason: "장 포획" };
-    if (this.legalMoves(s).length === 0) return { done: true, winner: other(s.turn), reason: "외통" };
+    if (s.winner) return { done: true, winner: s.winner, reason: "General captured" };
+    if (this.legalMoves(s).length === 0) return { done: true, winner: other(s.turn), reason: "Checkmate" };
     return { done: false, winner: null };
   },
 };

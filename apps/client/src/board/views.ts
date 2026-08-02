@@ -175,9 +175,9 @@ function quoridorView(me: Player): BoardView<QuoridorState, QuoridorMove> {
   const counter = document.createElement("span");
   counter.className = "quoridor-walls";
   const refresh = () => {
-    moveBtn.textContent = "🚶 이동";
-    hBtn.textContent = "▬ 가로 벽";
-    vBtn.textContent = "▮ 세로 벽";
+    moveBtn.textContent = "🚶 Move";
+    hBtn.textContent = "▬ H wall";
+    vBtn.textContent = "▮ V wall";
     const sel = (on: boolean) => `btn btn-small ${on ? "btn-primary" : "btn-ghost"}`;
     moveBtn.className = sel(mode === "move");
     hBtn.className = sel(mode === "wall" && orient === "h");
@@ -206,7 +206,7 @@ function quoridorView(me: Player): BoardView<QuoridorState, QuoridorMove> {
     mod: quoridor, controls,
     setRerender(fn) { rerender = fn; refresh(); },
     draw(ctx, px, s) {
-      counter.textContent = `🧱 남은 벽 — 나: ${s.walls[me]}  상대: ${s.walls[me === "b" ? "w" : "b"]}`;
+      counter.textContent = `🧱 Walls left — you: ${s.walls[me]}  opponent: ${s.walls[me === "b" ? "w" : "b"]}`;
       boardBase(ctx, px);
       const cs = px / N;
       ctx.strokeStyle = LINE; ctx.lineWidth = 1;

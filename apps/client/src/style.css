@@ -187,7 +187,7 @@ button { font-family: inherit; }
 }
 .hud-chip:hover { border-color: var(--gold); }
 .hud-amount { color: var(--gold-lt); }
-.hud-avatar { width: 30px; height: 30px; display: grid; place-items: center; background: #3a2a1b; border: 1px solid var(--frame); border-radius: 50%; font-size: 1.05rem; }
+.hud-avatar { width: 30px; height: 30px; background-color: #3a2a1b; background-size: 78%; background-repeat: no-repeat; background-position: center; border: 1px solid var(--frame); border-radius: 50%; }
 .hud-player { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.05; }
 .hud-nick { font-size: 0.84rem; font-weight: 700; }
 .hud-lv { font-size: 0.66rem; color: var(--gold); letter-spacing: 0.06em; }
@@ -213,7 +213,6 @@ button { font-family: inherit; }
 .hero-rule { width: 240px; height: 20px; margin: 2px 0; position: relative; }
 .hero-rule::before { content: "⚜"; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); color: var(--gold); font-size: 1rem; }
 .hero-rule::after { content: ""; position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, var(--gold-dk) 30%, var(--gold-dk) 70%, transparent); }
-.hero-sub { color: var(--muted); font-size: 0.98rem; letter-spacing: 0.02em; font-style: italic; }
 
 .play-cards { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
 .play-card {
@@ -238,11 +237,8 @@ button { font-family: inherit; }
   pointer-events: none;
 }
 .play-card:hover { transform: translateY(-4px); border-color: var(--gold); box-shadow: var(--frame-in), 0 0 30px rgba(216, 150, 70, 0.3); }
-.play-icon { font-size: 2rem; width: 56px; height: 56px; display: grid; place-items: center; background: radial-gradient(circle at 50% 35%, #4a3620, #2a1d12); border: 1px solid var(--frame); border-radius: 50%; box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.6); }
-.play-body { display: flex; flex-direction: column; gap: 2px; flex: 1; }
-.play-kicker { font-family: var(--ui); font-size: 0.72rem; letter-spacing: 0.28em; color: var(--gold); text-transform: uppercase; }
-.play-label { font-family: var(--display); font-size: 1.3rem; font-weight: 700; letter-spacing: 0.02em; color: var(--gold-lt); }
-.play-sub { font-size: 0.8rem; color: var(--muted); }
+.play-icon { width: 56px; height: 56px; background-color: #3a2717; background-size: 74%; background-repeat: no-repeat; background-position: center; border: 1px solid var(--frame); border-radius: 50%; box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.7); }
+.play-label { flex: 1; font-family: var(--display); font-size: 1.3rem; font-weight: 700; letter-spacing: 0.02em; color: var(--gold-lt); }
 .play-go { color: var(--gold); font-size: 1rem; opacity: 0.75; }
 .deck-cta { width: min(88vw, 698px); }
 
@@ -270,7 +266,7 @@ button { font-family: inherit; }
 }
 .pill-item:hover { color: var(--gold-lt); }
 .pill-item.active { color: #2a1809; background: var(--grad-gold); box-shadow: 0 2px 8px rgba(180, 120, 50, 0.4); }
-.pill-icon { font-size: 1.05rem; }
+.pill-icon { width: 1.35rem; height: 1.35rem; }
 .pill-label { font-size: 0.72rem; letter-spacing: 0.04em; }
 
 /* ── Multi hub ───────────────────────────────────────────── */
@@ -278,10 +274,8 @@ button { font-family: inherit; }
 .mode-list { display: flex; flex-direction: column; gap: 14px; width: min(92vw, 460px); }
 .mode-card { display: flex; align-items: center; gap: 16px; padding: 20px; cursor: pointer; color: var(--fg); text-align: left; transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease; }
 .mode-card:hover { transform: translateX(6px); border-color: var(--gold); box-shadow: var(--frame-in), 0 0 24px rgba(216, 150, 70, 0.25); }
-.mode-icon { font-size: 1.5rem; width: 52px; height: 52px; display: grid; place-items: center; background: radial-gradient(circle at 50% 35%, #4a3620, #2a1d12); border: 1px solid var(--frame); border-radius: 50%; color: var(--gold-lt); }
-.mode-body { display: flex; flex-direction: column; gap: 3px; flex: 1; }
-.mode-label { font-family: var(--display); font-size: 1.15rem; font-weight: 700; color: var(--gold-lt); }
-.mode-sub { font-size: 0.82rem; color: var(--muted); }
+.mode-icon { width: 52px; height: 52px; background-color: #3a2717; background-size: 72%; background-repeat: no-repeat; background-position: center; border: 1px solid var(--frame); border-radius: 50%; box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.65); }
+.mode-label { flex: 1; font-family: var(--display); font-size: 1.15rem; font-weight: 700; color: var(--gold-lt); }
 .mode-arrow { font-size: 1.5rem; color: var(--gold); opacity: 0.75; }
 
 /* ── Forms ───────────────────────────────────────────────── */
@@ -314,7 +308,7 @@ button { font-family: inherit; }
 .room-list { width: min(92vw, 440px); display: flex; flex-direction: column; gap: 10px; overflow-y: auto; max-height: 44vh; padding: 2px; }
 .list-empty { text-align: center; color: var(--muted); padding: 24px; font-size: 0.92rem; font-style: italic; }
 .room-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
-.room-icon { font-size: 1.35rem; width: 44px; height: 44px; display: grid; place-items: center; background: #2a1d12; border: 1px solid var(--frame); border-radius: 50%; }
+.room-icon { width: 44px; height: 44px; flex: 0 0 auto; object-fit: contain; padding: 5px; background-color: #2a1d12; background-size: 62%; background-repeat: no-repeat; background-position: center; border: 1px solid var(--frame); border-radius: 50%; }
 .room-body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .room-title { font-weight: 700; font-size: 1rem; color: var(--gold-lt); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .room-meta { font-size: 0.8rem; color: var(--muted); }
@@ -323,7 +317,8 @@ button { font-family: inherit; }
 /* ── Lobby / waiting ─────────────────────────────────────── */
 .lobby-screen { justify-content: center; }
 .lobby-card { padding: 32px 34px; display: flex; flex-direction: column; align-items: center; gap: 16px; width: min(92vw, 400px); text-align: center; }
-.lobby-game { font-family: var(--display); font-size: 1.3rem; font-weight: 700; color: var(--gold-lt); }
+.lobby-game { display: flex; align-items: center; justify-content: center; gap: 10px; font-family: var(--display); font-size: 1.3rem; font-weight: 700; color: var(--gold-lt); }
+.lobby-game-icon { width: 40px; height: 40px; object-fit: contain; }
 .lobby-status { font-family: var(--ui); font-size: 1.05rem; font-weight: 700; color: var(--ember); min-height: 1.4em; }
 .spinner { width: 44px; height: 44px; border: 3px solid rgba(216, 180, 90, 0.2); border-top-color: var(--gold); border-radius: 50%; animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -336,7 +331,7 @@ button { font-family: inherit; }
 .section-title { font-family: var(--display); font-size: 1.05rem; font-weight: 700; color: var(--gold); margin: 6px 2px 0; }
 .coming-note { color: var(--muted); font-size: 0.84rem; text-align: center; padding: 10px 0 4px; font-style: italic; }
 .profile-hero { display: flex; align-items: center; gap: 16px; padding: 18px; }
-.avatar { font-size: 2.2rem; width: 66px; height: 66px; display: grid; place-items: center; background: radial-gradient(circle at 50% 35%, #4a3620, #2a1d12); border: 1px solid var(--frame); border-radius: 50%; box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.6); }
+.avatar { width: 66px; height: 66px; background-color: #3a2717; background-size: 74%; background-repeat: no-repeat; background-position: center; border: 1px solid var(--frame); border-radius: 50%; box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.65); }
 .profile-id { flex: 1; }
 .profile-name { margin: 0; font-family: var(--display); font-size: 1.3rem; font-weight: 700; color: var(--gold-lt); }
 .profile-tag { font-family: var(--ui); font-size: 0.8rem; color: var(--gold); margin-top: 3px; }
@@ -349,19 +344,19 @@ button { font-family: inherit; }
 .stat-label { font-size: 0.72rem; color: var(--muted); margin-top: 3px; }
 .history-list { display: flex; flex-direction: column; gap: 8px; }
 .history-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
-.history-icon { font-size: 1.2rem; }
+.history-icon { width: 28px; height: 28px; object-fit: contain; flex: 0 0 auto; }
 .history-title { flex: 1; font-size: 0.92rem; }
 .history-result { font-family: var(--ui); font-size: 0.84rem; font-weight: 700; }
 .history-result.win { color: var(--good); }
 .history-result.loss { color: var(--danger); }
 .shop-head { display: flex; align-items: center; justify-content: space-between; }
 .wallet { display: flex; align-items: center; gap: 6px; padding: 8px 16px; }
-.coin { font-size: 1rem; }
+.coin { width: 1.15em; height: 1.15em; }
 .wallet-amount { font-family: var(--display); font-weight: 700; color: var(--gold-lt); }
 .shop-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
 .shop-item { position: relative; padding: 16px 14px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
 .item-tag { position: absolute; top: 10px; right: 10px; font-family: var(--ui); font-size: 0.64rem; font-weight: 700; padding: 3px 8px; background: #4a3620; color: var(--gold-lt); border: 1px solid var(--gold-dk); border-radius: 999px; }
-.item-icon { font-size: 2.2rem; width: 66px; height: 66px; display: grid; place-items: center; background: radial-gradient(circle at 50% 35%, #4a3620, #2a1d12); border: 1px solid var(--frame); border-radius: 12px; }
+.item-icon { width: 66px; height: 66px; object-fit: contain; padding: 6px; background-color: #3a2717; border: 1px solid var(--frame); border-radius: 12px; box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.6); }
 .item-name { font-weight: 700; font-size: 0.96rem; color: var(--gold-lt); }
 .item-desc { font-size: 0.78rem; color: var(--muted); min-height: 2.2em; }
 .price-btn { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 4px; }
@@ -400,7 +395,7 @@ button { font-family: inherit; }
 }
 .game-card::before { content: ""; position: absolute; inset: 5px; border: 1px solid rgba(216, 180, 90, 0.22); border-radius: 12px; pointer-events: none; }
 .game-card.center { border-color: var(--gold); box-shadow: var(--frame-in), 0 0 44px rgba(216, 150, 70, 0.35); }
-.game-icon { font-size: 4.2rem; line-height: 1; color: var(--gold); filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.7)); }
+.game-icon { width: 86px; height: 86px; object-fit: contain; filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.75)); }
 .game-card.locked .game-icon { color: #6a563a; }
 .game-name { font-family: var(--display); font-size: 1.3rem; font-weight: 700; color: var(--gold-lt); }
 .game-tag { font-family: var(--ui); font-size: 0.8rem; letter-spacing: 0.06em; color: var(--muted); }
@@ -496,43 +491,160 @@ button { font-family: inherit; }
 .toast.hidden { display: none; }
 .quit-msg { display: grid; place-items: center; height: 100vh; color: var(--muted); font-size: 1.1rem; font-style: italic; }
 
-/* ── Deck builder (Slay-the-Spire style cards) ───────────── */
-.deck-screen { justify-content: flex-start; padding-top: 66px; gap: 14px; }
-.deck-tabs { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
-.deck-tab { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid var(--frame); border-radius: var(--r-sm); background: #2a1d12; color: var(--fg); font-family: var(--ui); font-size: 0.92rem; cursor: pointer; transition: border-color 0.12s ease, background 0.12s ease; }
+/* ── Deck builder ────────────────────────────────────────── */
+.deck-screen { justify-content: flex-start; align-items: stretch; gap: 10px; padding: 12px 16px 10px; }
+.deck-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.deck-title { margin: 0; font-size: 1.5rem; }
+.deck-head .deck-tabs { margin-left: auto; }
+.deck-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.deck-tab { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border: 1px solid var(--frame); border-radius: var(--r-sm); background: #2a1d12; color: var(--fg); font-family: var(--ui); font-size: 0.9rem; cursor: pointer; transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease; }
 .deck-tab:hover { border-color: var(--gold); }
 .deck-tab.active { background: #4a3620; border-color: var(--gold); color: var(--gold-lt); }
-.deck-tab-icon { font-size: 1.05rem; }
-.deck-panel { width: min(96vw, 760px); display: flex; flex-direction: column; gap: 14px; flex: 1; min-height: 0; }
-.deck-info { display: flex; flex-wrap: wrap; justify-content: space-around; gap: 10px; padding: 16px; }
-.deck-info-item { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 66px; }
-.dii-val { font-family: var(--display); font-weight: 700; font-size: 1.2rem; color: var(--gold-lt); }
-.dii-label { font-size: 0.72rem; color: var(--muted); }
-.deck-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.deck-counter { font-family: var(--display); font-weight: 700; color: var(--muted); }
-.deck-counter.full { color: var(--good); }
-.deck-note { font-size: 0.8rem; color: var(--muted); line-height: 1.5; font-style: italic; }
-.deck-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); gap: 12px; overflow-y: auto; padding: 4px 2px 24px; align-content: start; flex: 1; min-height: 0; max-height: 46vh; }
+.deck-tab-icon { width: 20px; height: 20px; object-fit: contain; }
 
-.deck-card-item {
+.deck-main { flex: 1; min-height: 0; display: grid; grid-template-columns: 300px 1fr; gap: 18px; }
+
+/* Inspector — the blown-up card you're currently looking at. */
+.deck-inspector { display: flex; flex-direction: column; align-items: center; gap: 14px; min-height: 0; overflow-y: auto; padding: 4px; }
+.insp-body { width: 100%; max-width: 260px; display: flex; flex-direction: column; gap: 12px; }
+.insp-metas { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.insp-meta { display: flex; flex-direction: column; gap: 1px; padding: 7px 10px; background: rgba(0, 0, 0, 0.28); border: 1px solid var(--frame); border-radius: var(--r-sm); }
+.im-label { font-size: 0.66rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.im-value { font-family: var(--display); font-weight: 700; font-size: 0.94rem; color: var(--gold-lt); }
+.insp-steps { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.step-btn { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; font-size: 1.3rem; font-weight: 700; cursor: pointer; color: var(--gold-lt); background: linear-gradient(180deg, #3b2a1b, #251a11); border: 1px solid var(--frame); box-shadow: var(--frame-in); transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease; }
+.step-btn:hover:not(:disabled) { border-color: var(--gold); transform: translateY(-2px); box-shadow: 0 0 16px rgba(216, 150, 70, 0.35); }
+.step-btn.primary:not(:disabled) { background: var(--grad-gold); color: #2a1809; border-color: var(--gold-lt); }
+.step-btn:disabled { opacity: 0.32; cursor: not-allowed; }
+.step-count { font-family: var(--display); font-weight: 700; font-size: 1.05rem; color: var(--gold-lt); min-width: 62px; text-align: center; }
+
+/* Pool — filters + the browsable card grid. */
+.deck-pool { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.pool-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+.filter-group { display: flex; gap: 6px; flex-wrap: wrap; }
+.filter-chip { padding: 5px 12px; font-family: var(--ui); font-size: 0.82rem; color: var(--muted); cursor: pointer; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--frame); border-radius: 999px; transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease; }
+.filter-chip:hover { color: var(--fg); border-color: var(--gold-dk); }
+.filter-chip.active { background: var(--grad-gold); border-color: var(--gold-lt); color: #2a1809; font-weight: 700; }
+.pool-grid { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(136px, 1fr)); gap: 16px; align-content: start; padding: 8px 6px 20px; }
+.pool-empty { grid-column: 1 / -1; padding: 40px 0; text-align: center; color: var(--muted); font-style: italic; }
+
+/* Tray — the deck itself, one thumbnail per copy. */
+.deck-tray { padding: 10px 14px 12px; display: flex; flex-direction: column; gap: 8px; }
+.tray-head { display: flex; align-items: center; gap: 12px; }
+.tray-label { font-family: var(--display); font-weight: 700; color: var(--gold-lt); letter-spacing: 0.04em; }
+.tray-count { font-family: var(--display); font-weight: 700; color: var(--muted); }
+.tray-count.full { color: var(--good); }
+.tray-rules { flex: 1; min-width: 0; font-size: 0.74rem; font-style: italic; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tray-cards { display: flex; gap: 7px; overflow-x: auto; overflow-y: hidden; min-height: 88px; padding: 2px 0 6px; }
+.tray-empty { display: grid; place-items: center; width: 100%; color: var(--muted); font-style: italic; font-size: 0.86rem; }
+
+/* ── The card itself ─────────────────────────────────────────
+   Three stacked layers: artwork, then the painted frame PNG whose art window is
+   transparent, then the text. The frame's opaque border masks the artwork, so
+   the art box only needs to be inset far enough to stay under it. */
+.tcg-card {
+  --tg: rgba(190, 168, 118, 0.5);
   position: relative;
   aspect-ratio: 5 / 7;
-  border-radius: 12px;
-  padding: 0;
-  overflow: hidden;
   cursor: pointer;
   user-select: none;
-  background: linear-gradient(180deg, #3a2a1b, #241811);
-  border: 1px solid var(--frame);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
-  transition: transform 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease;
+  color: var(--fg);
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.6));
+  transition: transform 0.16s ease, filter 0.16s ease;
 }
-.deck-card-item::before { content: ""; position: absolute; inset: 4px; border: 1px solid rgba(216, 180, 90, 0.28); border-radius: 9px; pointer-events: none; z-index: 3; }
-.deck-card-item:hover { transform: translateY(-6px) rotate(-1deg) scale(1.03); box-shadow: 0 14px 26px rgba(0, 0, 0, 0.6), 0 0 20px rgba(216, 150, 70, 0.3); border-color: var(--gold); z-index: 4; }
-.deck-card-item.selected { border-color: var(--gold-lt); box-shadow: 0 0 0 2px var(--gold), 0 0 22px rgba(216, 150, 70, 0.5); }
-.dci-cost { position: absolute; top: 7px; left: 7px; z-index: 5; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: radial-gradient(circle at 40% 35%, #7ea6e6, #3a5da0); border: 1px solid #cfe0ff; color: #fff; font-family: var(--display); font-weight: 700; font-size: 0.9rem; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5); }
-.dci-art { height: 56%; display: grid; place-items: center; font-size: 2.4rem; background: radial-gradient(circle at 50% 40%, #5a4126, #2c1f13); border-bottom: 2px solid var(--gold-dk); filter: saturate(1.1); }
-.dci-banner { position: absolute; top: calc(56% - 15px); left: 5px; right: 5px; z-index: 4; text-align: center; padding: 3px 4px; font-size: 0.72rem; font-weight: 700; color: #2a1809; background: var(--grad-gold); border: 1px solid var(--gold-dk); border-radius: 5px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dci-desc { padding: 22px 8px 8px; text-align: center; font-size: 0.68rem; color: var(--parch); font-style: italic; line-height: 1.35; }
-.dci-selected-mark { position: absolute; bottom: 6px; right: 8px; z-index: 5; color: var(--gold-lt); font-size: 0.9rem; opacity: 0; }
-.deck-card-item.selected .dci-selected-mark { opacity: 1; }
+
+/* Rarity glow, keyed to the frame's metal. */
+.tcg-card.t-common { --tg: rgba(190, 168, 118, 0.5); }
+.tcg-card.t-uncommon { --tg: rgba(127, 174, 74, 0.5); }
+.tcg-card.t-rare { --tg: rgba(90, 131, 196, 0.55); }
+.tcg-card.t-epic { --tg: rgba(154, 99, 200, 0.55); }
+.tcg-card.t-legendary { --tg: rgba(224, 150, 70, 0.65); }
+
+.tcg-art { position: absolute; left: 8%; top: 8%; width: 84%; height: 50%; overflow: hidden; z-index: 1; }
+.tcg-art-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tcg-frame { position: absolute; inset: 0; z-index: 2; background-size: 100% 100%; background-repeat: no-repeat; pointer-events: none; }
+
+.tcg-gem {
+  position: absolute; left: 8.5%; top: 4.5%; z-index: 3;
+  width: 13%; aspect-ratio: 1;
+  display: grid; place-items: center;
+  font-family: var(--display); font-weight: 700; color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+.tcg-name {
+  position: absolute; left: 12%; right: 12%; top: 59.5%; z-index: 3;
+  text-align: center;
+  font-family: var(--display); font-weight: 700; color: #2f2312;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tcg-text {
+  position: absolute; left: 14%; right: 14%; top: 70%; bottom: 9%; z-index: 3;
+  overflow: hidden;
+  display: flex; flex-direction: column; gap: 2px;
+  text-align: center; color: #4a3a24; line-height: 1.3;
+}
+.tcg-type { font-family: var(--ui); letter-spacing: 0.12em; color: #7a6034; font-size: 0.82em; }
+.tcg-count {
+  position: absolute; right: 8%; bottom: 5%; z-index: 4;
+  padding: 1px 8px; border-radius: 999px;
+  font-family: var(--display); font-weight: 700; font-size: 0.78rem;
+  color: #2a1809; background: var(--grad-gold);
+  border: 1px solid var(--gold-dk); box-shadow: 0 2px 5px rgba(0, 0, 0, 0.6);
+}
+
+/* Legendary foil sweep, clipped to the card. */
+.tcg-card.t-legendary::after {
+  content: ""; position: absolute; inset: 6%; z-index: 3; pointer-events: none;
+  overflow: hidden;
+  background: linear-gradient(115deg, transparent 40%, rgba(255, 240, 200, 0.2) 48%, transparent 56%);
+  animation: foil 4.5s ease-in-out infinite;
+}
+@keyframes foil { 0%, 62% { opacity: 0; } 74% { opacity: 1; } 88%, 100% { opacity: 0; } }
+
+/* Sizes. */
+.tcg-card.lg { width: 100%; max-width: 260px; }
+.tcg-card.lg .tcg-gem { font-size: 1.15rem; }
+.tcg-card.lg .tcg-name { font-size: 0.98rem; }
+.tcg-card.lg .tcg-text { font-size: 0.74rem; }
+
+.tcg-card.sm .tcg-gem { font-size: 0.8rem; }
+.tcg-card.sm .tcg-name { font-size: 0.66rem; }
+.tcg-card.sm .tcg-text { font-size: 0.5rem; }
+.tcg-card.sm:hover { transform: translateY(-9px) rotate(-1.2deg) scale(1.06); filter: drop-shadow(0 16px 22px rgba(0, 0, 0, 0.7)) drop-shadow(0 0 16px var(--tg)); z-index: 5; }
+.tcg-card.sm.focused { filter: drop-shadow(0 0 10px var(--gold)) drop-shadow(0 6px 12px rgba(0, 0, 0, 0.6)); }
+.tcg-card.sm.owned .tcg-art-img { filter: saturate(1.2) brightness(1.08); }
+
+.tcg-card.xs { flex: 0 0 auto; width: 58px; }
+.tcg-card.xs .tcg-gem { font-size: 0.52rem; }
+.tcg-card.xs .tcg-name { font-size: 0.4rem; left: 10%; right: 10%; }
+.tcg-card.xs:hover { transform: translateY(-5px); filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.65)) drop-shadow(0 0 10px var(--tg)); }
+
+/* Scrollbars inside the builder. */
+.pool-grid::-webkit-scrollbar, .tray-cards::-webkit-scrollbar, .deck-inspector::-webkit-scrollbar { width: 9px; height: 9px; }
+.pool-grid::-webkit-scrollbar-track, .tray-cards::-webkit-scrollbar-track, .deck-inspector::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.3); border-radius: 999px; }
+.pool-grid::-webkit-scrollbar-thumb, .tray-cards::-webkit-scrollbar-thumb, .deck-inspector::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #6d5226, #46331a); border-radius: 999px; border: 1px solid var(--frame); }
+
+@media (max-width: 900px) {
+  .deck-main { grid-template-columns: 1fr; grid-template-rows: auto 1fr; gap: 12px; }
+  .deck-inspector { flex-direction: row; align-items: flex-start; gap: 12px; overflow: visible; }
+  .tcg-card.lg { width: 132px; flex: 0 0 132px; }
+  .tcg-card.lg .tcg-glyph { font-size: 2.5rem; }
+  .tcg-card.lg .tcg-name { font-size: 0.76rem; }
+  .tcg-card.lg .tcg-text { font-size: 0.62rem; }
+  .insp-body { max-width: none; }
+  .deck-head .deck-tabs { margin-left: 0; width: 100%; }
+}
+
+/* ── Generated art ───────────────────────────────────────────
+   `.icon` is a background-image span so it scales with the surrounding text;
+   standalone art (game cards, shop items) uses <img> with object-fit. */
+.icon {
+  display: inline-block;
+  width: 1.4em; height: 1.4em;
+  flex: 0 0 auto;
+  vertical-align: -0.3em;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+.chip-glyph { width: 22px; height: 22px; object-fit: contain; flex: 0 0 auto; }

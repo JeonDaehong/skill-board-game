@@ -84,7 +84,7 @@ const MATE = 1_000_000;
 
 /**
  * Static evaluation from the side-to-move's perspective (higher = better).
- * `disguise` (은폐): pieces of that color that aren't pawns/king are valued as
+ * `disguise` (Cloak): pieces of that color that aren't pawns/king are valued as
  * pawns, so the AI under-rates the disguised side's material.
  */
 function evaluate(state: GameState, disguise?: Color): number {
@@ -191,7 +191,7 @@ export function chooseMove(
   disguise?: Color,
 ): Move | null {
   let rootMoves = orderMoves(generateLegalMoves(state, undefined, rules));
-  // 무르기: the just-undone piece may not move again this turn.
+  // Undo: the just-undone piece may not move again this turn.
   if (forbiddenFrom !== undefined) {
     const filtered = rootMoves.filter((m) => m.from !== forbiddenFrom);
     if (filtered.length > 0) rootMoves = filtered;

@@ -53,7 +53,7 @@ describe("reduce: teleport", () => {
   });
 });
 
-describe("reduce: 한번 더 (extra turn)", () => {
+describe("reduce: One More (extra turn)", () => {
   it("keeps the turn after the next move", () => {
     const m = createMatch(["one-more"], []);
     const afterSkill = expectOk(reduce(m, { type: "one-more" }));
@@ -65,7 +65,7 @@ describe("reduce: 한번 더 (extra turn)", () => {
   });
 });
 
-describe("reduce: 도박꾼 determinism", () => {
+describe("reduce: gambler determinism", () => {
   it("evolve gives the same result for the same RNG", () => {
     const m = createMatch(["evolve-gamble"], []);
     const rng = () => 0; // roll 0 < 0.25 → success; floor(0*3) → bishop
@@ -84,7 +84,7 @@ describe("reduce: 도박꾼 determinism", () => {
 });
 
 describe("reduce: reposition skills", () => {
-  it("물러서기 moves a pawn backward and ends the turn", () => {
+  it("Retreat moves a pawn backward and ends the turn", () => {
     const m = fenMatch("4k3/8/8/8/4P3/8/8/4K3 w - - 0 1", ["retreat"]);
     const s = expectOk(reduce(m, { type: "retreat", from: sq("e4"), to: sq("e3") }));
     expect(s.chess.board[sq("e3")]?.type).toBe("p");
@@ -92,7 +92,7 @@ describe("reduce: reposition skills", () => {
     expect(s.chess.turn).toBe("b");
   });
 
-  it("기습 행군 keeps the turn (no consume)", () => {
+  it("Raid March keeps the turn (no consume)", () => {
     const m = fenMatch("4k3/8/8/8/8/8/8/4KN2 w - - 0 1", ["raid-march"]);
     const s = expectOk(reduce(m, { type: "raid-march", from: sq("f1"), to: sq("f2") }));
     expect(s.chess.board[sq("f2")]?.type).toBe("n");
@@ -100,7 +100,7 @@ describe("reduce: reposition skills", () => {
   });
 });
 
-describe("reduce: 유령 기물 (phantom jump)", () => {
+describe("reduce: Phantom (phantom jump)", () => {
   it("rook jumps its own pawn", () => {
     const m = fenMatch("4k3/8/8/8/8/8/P7/R3K3 w - - 0 1", ["phantom"]);
     const s = expectOk(reduce(m, { type: "phantom-move", from: sq("a1"), to: sq("a3") }));
@@ -110,7 +110,7 @@ describe("reduce: 유령 기물 (phantom jump)", () => {
   });
 });
 
-describe("reduce: 희생의 계약 (multi-step)", () => {
+describe("reduce: Sacrifice Pact (multi-step)", () => {
   it("sacrifices a piece, moves one, then ends", () => {
     const m = createMatch(["sacrifice-pact"], []);
     let s = expectOk(reduce(m, { type: "sacrifice-start", sq: sq("b2") }));
@@ -131,7 +131,7 @@ describe("reduce: 희생의 계약 (multi-step)", () => {
   });
 });
 
-describe("reduce: 부활 (gamble + placement)", () => {
+describe("reduce: Revive (gamble + placement)", () => {
   it("revives a dead piece on success, then places it (turn kept)", () => {
     const m = createMatch(["revive-gamble"], []);
     m.players.w.grave = ["r"];
@@ -141,11 +141,11 @@ describe("reduce: 부활 (gamble + placement)", () => {
     expect(s.chess.board[sq("e4")]).toEqual({ color: "w", type: "r" });
     expect(s.players.w.grave).not.toContain("r");
     expect(s.players.w.lockedFrom).toBe(sq("e4"));
-    expect(s.chess.turn).toBe("w"); // 부활 does not consume the turn
+    expect(s.chess.turn).toBe("w"); // Revive does not consume the turn
   });
 });
 
-describe("reduce: 무르기 (undo)", () => {
+describe("reduce: Undo (undo)", () => {
   it("reverts the opponent's last move and locks that piece", () => {
     let s = createMatch(["undo"], []);
     s = expectOk(reduce(s, { type: "move", from: sq("e2"), to: sq("e4") }));
@@ -159,7 +159,7 @@ describe("reduce: 무르기 (undo)", () => {
   });
 });
 
-describe("reduce: 해방 (liberation)", () => {
+describe("reduce: Liberation (liberation)", () => {
   it("turns rooks/bishops/knights into queens with a 5-turn timer", () => {
     const m = createMatch(["liberation"], []);
     const s = expectOk(reduce(m, { type: "liberation" }));
@@ -170,7 +170,7 @@ describe("reduce: 해방 (liberation)", () => {
   });
 });
 
-describe("reduce: 거신병 (titan)", () => {
+describe("reduce: Titan (titan)", () => {
   it("fuses king + front queen + side rooks", () => {
     const m = fenMatch("4k3/8/8/8/8/8/4Q3/3RKR2 w - - 0 1", ["titan-fusion"]);
     const s = expectOk(reduce(m, { type: "titan-fuse" }));
@@ -193,17 +193,17 @@ describe("reduce: 거신병 (titan)", () => {
   });
 });
 
-describe("reduce: 사망 인터셉트", () => {
+describe("reduce: death intercept", () => {
   const foolsMate = "rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq - 0 2";
 
-  it("용맹한 신하 saves the king from checkmate", () => {
+  it("Loyal Vassal saves the king from checkmate", () => {
     const m = fenMatch(foolsMate, ["loyal-vassal"], []); // white holds the skill
     const s = expectOk(reduce(m, { type: "move", from: sq("d8"), to: sq("h4") }));
     expect(s.status).toBe("playing"); // survived the mate
     expect(s.players.w.deck[0]!.usesLeft).toBe(0);
   });
 
-  it("왕의 귀환 removes the king and awaits a revival placement", () => {
+  it("King's Return removes the king and awaits a revival placement", () => {
     const m = fenMatch(foolsMate, ["kings-return"], []);
     const s = expectOk(reduce(m, { type: "move", from: sq("d8"), to: sq("h4") }));
     expect(s.status).toBe("playing");

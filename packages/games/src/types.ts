@@ -1,4 +1,4 @@
-/** The two sides. In these games "b" (black / 선공) always moves first. */
+/** The two sides. In these games "b" (black) always moves first. */
 export type Player = "b" | "w";
 
 export function other(p: Player): Player {

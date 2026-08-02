@@ -89,7 +89,7 @@ function quickstart(player: Player, gameId: string, deck: string[]): void {
   const waiting = quickQueues.get(gameId);
   if (waiting && isOpen(waiting) && waiting !== player) {
     quickQueues.delete(gameId);
-    return startRoom(uniqueCode(), waiting, player, gameId, "빠른 대전");
+    return startRoom(uniqueCode(), waiting, player, gameId, "Quick Match");
   }
   quickQueues.set(gameId, player);
   send(player.ws, { type: "waiting" });
@@ -108,7 +108,7 @@ function createRoom(
   waitingRooms.set(code, {
     code,
     gameId: msg.gameId,
-    title: msg.title?.trim() || "이름 없는 방",
+    title: msg.title?.trim() || "Untitled room",
     password: msg.password?.trim() || undefined,
     host: player,
   });
@@ -131,10 +131,10 @@ function joinRoom(
   const wr = waitingRooms.get(msg.code?.trim().toLowerCase());
   if (!wr || !isOpen(wr.host)) {
     if (wr) waitingRooms.delete(wr.code);
-    return send(player.ws, { type: "join-failed", reason: "방을 찾을 수 없습니다" });
+    return send(player.ws, { type: "join-failed", reason: "Room not found" });
   }
   if (wr.password && wr.password !== (msg.password ?? "").trim()) {
-    return send(player.ws, { type: "join-failed", reason: "비밀번호가 틀렸습니다" });
+    return send(player.ws, { type: "join-failed", reason: "Wrong password" });
   }
   if (!checkDeck(player, msg.deck)) return;
 

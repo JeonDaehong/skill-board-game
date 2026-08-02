@@ -1,5 +1,6 @@
 import { el, type AppContext, type Screen } from "../router.js";
 import { GAMES, type GameEntry } from "../games.js";
+import { art, objectUrl } from "../ui/art.js";
 
 export interface PickerOptions {
   /** Heading shown above the carousel. */
@@ -11,11 +12,11 @@ export interface PickerOptions {
 /**
  * Reusable game picker. A coverflow-style carousel: the centered card is large
  * and face-on, neighbors recede and rotate away, and the row wraps around
- * circularly. Drag / arrows / wheel to rotate; click the center card (or 선택)
+ * circularly. Drag / arrows / wheel to rotate; click the center card (or Select)
  * to choose. Choosing a playable game navigates to `resolve(game)`; locked
  * games just shake.
  *
- * Shared by Single Play (→ AI match) and Multi Play 퀵스타트 (→ online match).
+ * Shared by Single Play (→ AI match) and Multi Play Quick Match (→ online).
  */
 export function makeGamePicker(
   resolve: (game: GameEntry) => Screen,
@@ -34,7 +35,7 @@ export function makeGamePicker(
           onclick: () => onCardClick(i),
         },
         [
-          el("div", { class: "game-icon", text: game.icon }),
+          art(objectUrl(game.id), "game-icon"),
           el("div", { class: "game-name", text: game.name }),
           el("div", { class: "game-tag", text: game.tagline }),
         ],
@@ -45,11 +46,11 @@ export function makeGamePicker(
     });
 
     const title = el("div", { class: "carousel-title" });
-    const hint = el("div", { class: "carousel-hint", text: "← → 로 넘기고, 가운데 카드를 눌러 시작" });
-    const startBtn = el("button", { class: "btn btn-primary", text: "선택", onclick: () => startCurrent() });
+    const hint = el("div", { class: "carousel-hint", text: "← → to browse, tap the center card to start" });
+    const startBtn = el("button", { class: "btn btn-primary", text: "Select", onclick: () => startCurrent() });
 
     const screen = el("div", { class: "screen select-screen" }, [
-      el("button", { class: "btn btn-ghost corner", text: "← 뒤로", onclick: () => ctx.navigate(opts.onBack) }),
+      el("button", { class: "btn btn-ghost corner", text: "← Back", onclick: () => ctx.navigate(opts.onBack) }),
       el("h1", { class: "screen-title", text: opts.title }),
       el("div", { class: "carousel" }, [
         el("button", { class: "arrow left", html: "‹", onclick: () => rotate(-1) }),

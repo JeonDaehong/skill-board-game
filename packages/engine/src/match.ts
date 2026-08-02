@@ -71,11 +71,11 @@ export function deriveRules(state: MatchState): SkillRules {
 export function onTurnStart(state: MatchState, color: Color, events: MatchEvent[]): void {
   const p = state.players[color];
   for (const c of p.deck) if (c.cooldownRemaining > 0) c.cooldownRemaining--;
-  p.protectedSquare = null; // 철벽 방어 lasts only until your next turn
-  p.lockedFrom = null; // 부활 lock lasts only for the turn it was cast
+  p.protectedSquare = null; // Iron Guard lasts only until your next turn
+  p.lockedFrom = null; // Revive lock lasts only for the turn it was cast
 
   if (p.cloakTurnsLeft > 0 && --p.cloakTurnsLeft === 0) {
-    events.push({ type: "toast", text: "은폐 종료" });
+    events.push({ type: "toast", text: "Cloak ended" });
   }
   if (p.tempQueensTurnsLeft > 0 && --p.tempQueensTurnsLeft === 0) {
     for (const sq of p.tempQueens) {
@@ -83,7 +83,7 @@ export function onTurnStart(state: MatchState, color: Color, events: MatchEvent[
       if (pc && pc.color === color && pc.type === "q") state.chess.board[sq] = { color, type: "p" };
     }
     p.tempQueens = [];
-    events.push({ type: "toast", text: "해방 종료 — 퀸이 폰으로" });
+    events.push({ type: "toast", text: "Liberation ended — queens revert to pawns" });
   }
 }
 

@@ -49,13 +49,13 @@ export function driveMatchmaking(
   try {
     ws = new WebSocket(SERVER_URL);
   } catch {
-    handlers.onError?.("서버에 연결할 수 없습니다");
+    handlers.onError?.("Can't reach the server");
     return { send: () => {}, cleanup: () => {} };
   }
 
   ws.onopen = () => ws.send(JSON.stringify(initial));
-  ws.onerror = () => handlers.onError?.("서버에 연결할 수 없습니다 — `pnpm server` 실행이 필요합니다");
-  ws.onclose = () => { if (!handedOff) handlers.onError?.("연결이 종료되었습니다"); };
+  ws.onerror = () => handlers.onError?.("Can't reach the server — run `pnpm server` first");
+  ws.onclose = () => { if (!handedOff) handlers.onError?.("Connection closed"); };
 
   ws.onmessage = (e) => {
     const msg = JSON.parse(String(e.data));

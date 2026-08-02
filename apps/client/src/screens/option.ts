@@ -9,11 +9,11 @@ export const optionScreen: Screen = (ctx: AppContext) => {
   const screen = el("div", { class: "screen option-screen" }, [
     el("h1", { class: "screen-title", text: "Option" }),
     el("div", { class: "option-list" }, [
-      row("사운드", el("span", { class: "chip", text: "준비중" })),
-      row("보드 테마", el("span", { class: "chip", text: "Classic" })),
-      row("언어", el("span", { class: "chip", text: "한국어" })),
+      row("Sound", el("span", { class: "chip", text: "Coming soon" })),
+      row("Board theme", el("span", { class: "chip", text: "Classic" })),
+      row("Language", el("span", { class: "chip", text: "English" })),
     ]),
-    el("button", { class: "back-btn", text: "← 뒤로", onclick: () => ctx.navigate(menuScreen) }),
+    el("button", { class: "back-btn", text: "← Back", onclick: () => ctx.navigate(menuScreen) }),
   ]);
   ctx.root.appendChild(screen);
 };

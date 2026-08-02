@@ -17,24 +17,24 @@ export interface SkillCardState {
 export interface PlayerState {
   color: Color;
   deck: SkillCardState[];
-  /** Types of this side's own pieces that have died (부활 revive pool). */
+  /** Types of this side's own pieces that have died (Revive pool). */
   grave: PieceType[];
-  /** 철벽 방어: this side's currently protected square, or null. */
+  /** Iron Guard: this side's currently protected square, or null. */
   protectedSquare: Square | null;
-  /** 부활: a revived piece that can't move for the rest of this turn. */
+  /** Revive: a revived piece that can't move for the rest of this turn. */
   lockedFrom: Square | null;
-  /** 한번 더: the next turn-ending action returns the turn to this side. */
+  /** One More: the next turn-ending action returns the turn to this side. */
   extraTurnPending: boolean;
-  /** 은폐: turns left during which the opponent sees these pieces as pawns. */
+  /** Cloak: turns left during which the opponent sees these pieces as pawns. */
   cloakTurnsLeft: number;
-  /** 해방: squares holding skill-made queens, and turns until they revert. */
+  /** Liberation: squares holding skill-made queens, and turns until they revert. */
   tempQueens: Square[];
   tempQueensTurnsLeft: number;
-  /** 선견지명: indices of the opponent's deck this side has revealed. */
+  /** Foresight: indices of the opponent's deck this side has revealed. */
   revealed: number[];
 }
 
-/** 거신병: a fused 4-cell unit. */
+/** Titan: a fused 4-cell unit. */
 export interface TitanState {
   owner: Color;
   cells: Square[];
@@ -47,7 +47,7 @@ export type Pending =
   | { kind: "revive-place"; color: Color; piece: PieceType }
   | { kind: "kings-return"; color: Color };
 
-/** Snapshot the last mover left behind, so 무르기 can revert their turn. */
+/** Snapshot the last mover left behind, so Undo can revert their turn. */
 export interface UndoInfo {
   mover: Color;
   chess: GameState;

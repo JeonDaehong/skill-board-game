@@ -50,7 +50,7 @@ describe("game status", () => {
   });
 });
 
-describe("skill: 농민 봉기 (pawn captures forward)", () => {
+describe("skill: Peasant Revolt (pawn captures forward)", () => {
   const revolt: SkillRules = { peasantRevolt: { w: true } };
 
   it("standard pawn cannot capture straight ahead", () => {
@@ -62,7 +62,7 @@ describe("skill: 농민 봉기 (pawn captures forward)", () => {
     expect(moves.some((m) => m.to === e5)).toBe(false);
   });
 
-  it("with 농민 봉기, the pawn captures the piece ahead", () => {
+  it("with Peasant Revolt, the pawn captures the piece ahead", () => {
     const state = parseFen("4k3/8/8/4p3/4P3/8/8/4K3 w - - 0 1");
     const e4 = algebraicToSquare("e4");
     const e5 = algebraicToSquare("e5");
@@ -78,7 +78,7 @@ describe("skill: 농민 봉기 (pawn captures forward)", () => {
   });
 });
 
-describe("skill: 민첩한 나이트 (elephant jump)", () => {
+describe("skill: Agile Knight (elephant jump)", () => {
   const agile: SkillRules = { agileKnight: { w: true } };
 
   it("adds the (±2,+3) forward jump for white knights", () => {
@@ -94,7 +94,7 @@ describe("skill: 민첩한 나이트 (elephant jump)", () => {
   });
 });
 
-describe("skill: 혼란 (rook/bishop role swap)", () => {
+describe("skill: Chaos (rook/bishop role swap)", () => {
   const chaos: SkillRules = { chaos: true };
 
   it("bishop moves orthogonally, rook moves diagonally", () => {
@@ -113,7 +113,7 @@ describe("skill: 혼란 (rook/bishop role swap)", () => {
   });
 });
 
-describe("skill: 유령 기물 (jump over allies)", () => {
+describe("skill: Phantom (jump over allies)", () => {
   const phantom: SkillRules = { phantom: { w: true } };
 
   it("rook passes over a friendly pawn to reach squares beyond", () => {
@@ -130,7 +130,7 @@ describe("skill: 유령 기물 (jump over allies)", () => {
   });
 });
 
-describe("skill: 철벽 방어 (protected piece can't be captured)", () => {
+describe("skill: Iron Guard (protected piece can't be captured)", () => {
   it("excludes captures onto a protected square but still blocks sliders", () => {
     // White queen d1, black rook d5 in front; queen would capture on d5.
     const state = parseFen("4k3/8/8/3r4/8/8/8/3QK3 w - - 0 1");

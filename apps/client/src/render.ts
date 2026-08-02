@@ -6,21 +6,41 @@ import {
   type Piece,
   type Square,
 } from "@skill/chess-core";
+import { pieceUrl, textureUrl } from "./ui/art.js";
+
+const CODES = ["wk", "wq", "wr", "wb", "wn", "wp", "bk", "bq", "br", "bb", "bn", "bp"];
 
 const GLYPHS: Record<string, string> = {
-  wk: "♔",
-  wq: "♕",
-  wr: "♖",
-  wb: "♗",
-  wn: "♘",
-  wp: "♙",
-  bk: "♚",
-  bq: "♛",
-  br: "♜",
-  bb: "♝",
-  bn: "♞",
-  bp: "♟",
+  wk: "♔", wq: "♕", wr: "♖", wb: "♗", wn: "♘", wp: "♙",
+  bk: "♚", bq: "♛", br: "♜", bb: "♝", bn: "♞", bp: "♟",
 };
+
+/**
+ * Painted piece sprites, preloaded once and shared by every board. Until they
+ * finish decoding (and if one ever fails to load) the renderer falls back to the
+ * unicode glyphs, so the board is never blank.
+ */
+const SPRITES: Record<string, HTMLImageElement> = {};
+
+/** Square textures, keyed by the name they were sliced under. */
+const TEXTURES: Record<string, HTMLImageElement> = {};
+
+function loadImage(store: Record<string, HTMLImageElement>, key: string, url: string): Promise<void> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => { store[key] = img; resolve(); };
+    img.onerror = () => resolve();
+    img.src = url;
+  });
+}
+
+export function preloadPieces(): Promise<void> {
+  return Promise.all([
+    ...CODES.map((code) => loadImage(SPRITES, code, pieceUrl(code))),
+    loadImage(TEXTURES, "light", textureUrl("stone-light")),
+    loadImage(TEXTURES, "dark", textureUrl("wood-dark")),
+  ]).then(() => undefined);
+}
 
 const LIGHT = "#e9d5b5";
 const DARK = "#a97a5a";
@@ -34,13 +54,15 @@ export interface RenderOptions {
   targets: Square[];
   lastMove: { from: Square; to: Square } | null;
   flipped: boolean;
-  /** 거신병: a fused 4-cell unit to overlay, with its remaining HP. */
+  /** Titan: a fused 4-cell unit to overlay, with its remaining HP. */
   titan?: { cells: Square[]; hp: number } | null;
 }
 
 export class BoardRenderer {
   private ctx: CanvasRenderingContext2D;
   private size: number;
+  /** Lazily built square patterns; `null` means "texture unavailable". */
+  private patterns: Partial<Record<"light" | "dark", CanvasPattern | null>> = {};
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext("2d");
@@ -58,6 +80,28 @@ export class BoardRenderer {
     return makeSquare(file, rank);
   }
 
+  /**
+   * Tiling fill for a square colour, scaled down so the grain reads at 80px per
+   * square. Anchored to the canvas origin, so the material runs continuously
+   * across the board instead of restarting in every square.
+   */
+  private squareFill(kind: "light" | "dark"): string | CanvasPattern {
+    const cached = this.patterns[kind];
+    if (cached) return cached;
+
+    // Nothing is cached on a miss: the first paint can land before the textures
+    // finish decoding, and caching the failure would keep the board flat forever.
+    const tex = TEXTURES[kind];
+    if (!tex) return kind === "light" ? LIGHT : DARK;
+
+    const pat = this.ctx.createPattern(tex, "repeat");
+    if (!pat) return kind === "light" ? LIGHT : DARK;
+    const s = (this.size * 1.6) / tex.width;
+    pat.setTransform(new DOMMatrix([s, 0, 0, s, 0, 0]));
+    this.patterns[kind] = pat;
+    return pat;
+  }
+
   render(state: GameState, opts: RenderOptions): void {
     const { ctx, size } = this;
     for (let sq = 0; sq < 64; sq++) {
@@ -69,7 +113,7 @@ export class BoardRenderer {
       const y = row * size;
 
       // Board square.
-      ctx.fillStyle = (file + rank) % 2 === 0 ? DARK : LIGHT;
+      ctx.fillStyle = this.squareFill((file + rank) % 2 === 0 ? "dark" : "light");
       ctx.fillRect(x, y, size, size);
 
       // Last-move highlight.
@@ -128,7 +172,19 @@ export class BoardRenderer {
 
   private drawPiece(piece: Piece, x: number, y: number): void {
     const { ctx, size } = this;
-    const glyph = GLYPHS[`${piece.color}${piece.type}`] ?? "?";
+    const code = `${piece.color}${piece.type}`;
+    const sprite = SPRITES[code];
+
+    if (sprite) {
+      // Fit inside the square by height, keeping the sculpt's own proportions so
+      // a king still reads as taller than a pawn, and sit it on the square's base.
+      const h = size * 0.9;
+      const w = (sprite.width / sprite.height) * h;
+      ctx.drawImage(sprite, x + (size - w) / 2, y + size - h - size * 0.04, w, h);
+      return;
+    }
+
+    const glyph = GLYPHS[code] ?? "?";
     ctx.font = `${Math.floor(size * 0.78)}px "Segoe UI Symbol", "Arial Unicode MS", sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";

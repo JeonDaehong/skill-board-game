@@ -12,7 +12,7 @@ import {
 } from "@skill/chess-core";
 import type { MatchState } from "@skill/engine";
 import { el, type AppContext, type Screen } from "../router.js";
-import { BoardRenderer, type RenderOptions } from "../render.js";
+import { BoardRenderer, preloadPieces, type RenderOptions } from "../render.js";
 import { skillById } from "../skills.js";
 import { createLocalSession, type Session } from "./session.js";
 import { menuScreen } from "../screens/menu.js";
@@ -79,16 +79,16 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
   const oppStrip = el("div", { class: "opp-strip" });
   const skillBar = el("div", { class: "skill-bar" });
   const sacrificeBar = el("div", { class: "sacrifice-bar hidden" }, [
-    el("button", { class: "start-btn", text: "턴 종료", onclick: () => session.dispatch({ type: "sacrifice-end" }) }),
+    el("button", { class: "start-btn", text: "End turn", onclick: () => session.dispatch({ type: "sacrifice-end" }) }),
   ]);
   const toast = el("div", { class: "toast hidden" });
 
   ctx.root.appendChild(
     el("div", { class: "screen chess-screen" }, [
       el("div", { class: "game-topbar" }, [
-        el("button", { class: "back-btn", text: "← 나가기", onclick: onExit }),
-        el("div", { class: "game-heading" }, [el("span", { text: "체스" })]),
-        el("div", { class: "icon-btn", text: me === "w" ? "백" : "흑" }),
+        el("button", { class: "back-btn", text: "← Leave", onclick: onExit }),
+        el("div", { class: "game-heading" }, [el("span", { text: "Chess" })]),
+        el("div", { class: "icon-btn", text: me === "w" ? "White" : "Black" }),
       ]),
       oppStrip,
       statusEl,
@@ -148,31 +148,31 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
     const s = state();
     if (s.status === "ended") return;
     if (s.titan && s.chess.turn === s.titan.owner && s.titan.owner === me) {
-      statusEl.textContent = `거신병 (HP ${s.titan.hp}) · 거신병 또는 기물을 움직이세요`;
+      statusEl.textContent = `Titan (HP ${s.titan.hp}) · move the Titan or a piece`;
       return;
     }
     if (s.pending && s.pending.color === me) {
       const k = s.pending.kind;
       statusEl.textContent =
-        k === "sacrifice" ? `희생: 기물 이동 (남은 ${s.pending.movesLeft}회, 포획 불가)`
-        : k === "revive-place" ? "부활: 놓을 빈 칸을 선택"
-        : "왕의 귀환: 부활 위치를 선택";
+        k === "sacrifice" ? `Sacrifice: move a piece (${s.pending.movesLeft} left, no captures)`
+        : k === "revive-place" ? "Revive: pick an empty square"
+        : "King's Return: pick a revival square";
       return;
     }
     if (foresightPeek) {
-      statusEl.textContent = "선견지명: 상대 카드를 클릭";
+      statusEl.textContent = "Foresight: click an opponent card";
       return;
     }
     if (targeting) {
-      const name = skillById(targeting.skillId)?.name ?? "스킬";
-      statusEl.textContent = `${name}: 대상 선택 (빈 곳 클릭 시 취소)`;
+      const name = skillById(targeting.skillId)?.name ?? "Skill";
+      statusEl.textContent = `${name}: pick a target (click empty space to cancel)`;
       return;
     }
     if (!myTurn()) {
-      statusEl.textContent = "상대 차례…";
+      statusEl.textContent = "Opponent's turn…";
       return;
     }
-    statusEl.textContent = "당신 차례";
+    statusEl.textContent = "Your turn";
   }
 
   function renderSkillBar(): void {
@@ -189,10 +189,10 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
       ...deck.map((c) => {
         const meta = skillById(c.id);
         let stateText: string, cls: string;
-        if (meta?.type === "passive") { stateText = "상시"; cls = "passive"; }
-        else if (c.usesLeft !== null && c.usesLeft <= 0) { stateText = "소진"; cls = "spent"; }
-        else if (c.cooldownRemaining > 0) { stateText = `쿨 ${c.cooldownRemaining}`; cls = "cooldown"; }
-        else { stateText = "발동 가능"; cls = "ready"; }
+        if (meta?.type === "passive") { stateText = "Always on"; cls = "passive"; }
+        else if (c.usesLeft !== null && c.usesLeft <= 0) { stateText = "Spent"; cls = "spent"; }
+        else if (c.cooldownRemaining > 0) { stateText = `CD ${c.cooldownRemaining}`; cls = "cooldown"; }
+        else { stateText = "Ready"; cls = "ready"; }
         const usable = myTurn() && !busy && meta?.type === "active" && c.cooldownRemaining === 0 && (c.usesLeft === null || c.usesLeft > 0);
         const chip = el("div", { class: `skill-chip ${cls}${usable ? " usable" : ""}` }, [
           el("span", { class: "chip-icon", text: meta?.icon ?? "?" }),
@@ -212,7 +212,7 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
     if (deck.length === 0) { oppStrip.replaceChildren(); return; }
     const revealed = new Set(state().players[me].revealed);
     oppStrip.replaceChildren(
-      el("span", { class: "opp-strip-label", text: "상대 스킬:" }),
+      el("span", { class: "opp-strip-label", text: "Opponent skills:" }),
       ...deck.map((c, i) => {
         const shown = revealed.has(i) && c.id !== "hidden";
         const peekable = foresightPeek && !shown;
@@ -229,26 +229,26 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
   function showGameOver(): void {
     const s = state();
     const msg =
-      s.winner === "draw" ? "무승부"
-      : s.winner === me ? "승리! 🎉"
-      : "패배";
-    statusEl.textContent = opponentLeft ? `${msg} · 상대가 나갔습니다` : msg;
+      s.winner === "draw" ? "Draw"
+      : s.winner === me ? "Victory! 🎉"
+      : "Defeat";
+    statusEl.textContent = opponentLeft ? `${msg} · Opponent left` : msg;
 
     const actions: HTMLElement[] = [];
     if (opponentLeft) {
-      actions.push(el("div", { class: "overlay-note", text: "상대가 나갔습니다" }));
+      actions.push(el("div", { class: "overlay-note", text: "Opponent left" }));
     } else if (rematchPending) {
-      actions.push(el("button", { class: "start-btn waiting", text: "상대 대기 중…" }));
+      actions.push(el("button", { class: "start-btn waiting", text: "Waiting for opponent…" }));
     } else {
       actions.push(el("button", {
         class: "start-btn",
-        text: "다시하기",
+        text: "Rematch",
         // Show the pending state first; a local session restarts synchronously
         // inside rematch() and its fresh state will tear this overlay back down.
         onclick: () => { rematchPending = true; showGameOver(); session.rematch(); },
       }));
     }
-    actions.push(el("button", { class: "back-btn", text: "메뉴로", onclick: () => ctx.navigate(menuScreen) }));
+    actions.push(el("button", { class: "back-btn", text: "Menu", onclick: () => ctx.navigate(menuScreen) }));
 
     overlay.replaceChildren(
       el("div", { class: "overlay-card" }, [
@@ -262,12 +262,12 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
 
   /** Opponent quit before the match ended — there's no result to show. */
   function showOpponentLeft(): void {
-    statusEl.textContent = "상대가 나갔습니다";
+    statusEl.textContent = "Opponent left";
     overlay.replaceChildren(
       el("div", { class: "overlay-card" }, [
-        el("div", { class: "overlay-msg", text: "상대가 나갔습니다" }),
+        el("div", { class: "overlay-msg", text: "Opponent left" }),
         el("div", { class: "overlay-actions" }, [
-          el("button", { class: "back-btn", text: "메뉴로", onclick: () => ctx.navigate(menuScreen) }),
+          el("button", { class: "back-btn", text: "Menu", onclick: () => ctx.navigate(menuScreen) }),
         ]),
       ]),
     );
@@ -531,6 +531,8 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
   });
 
   render();
+  // Sprites may still be decoding on a cold load; repaint once they land.
+  void preloadPieces().then(render);
 
   return () => session.dispose();
 }

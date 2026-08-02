@@ -56,7 +56,7 @@ function endTurn(state: MatchState, acting: Color, events: MatchEvent[]): void {
   if (state.players[acting].extraTurnPending) {
     state.players[acting].extraTurnPending = false;
     state.chess = { ...state.chess, turn: acting, enPassant: null };
-    events.push({ type: "toast", text: "한번 더!" });
+    events.push({ type: "toast", text: "One More!" });
   } else {
     state.chess = { ...state.chess, turn: opp };
     onTurnStart(state, opp, events);
@@ -65,7 +65,7 @@ function endTurn(state: MatchState, acting: Color, events: MatchEvent[]): void {
   resolveEnding(state, events);
 }
 
-/** Natural endings + death-intercept skills (용맹한 신하 / 왕의 귀환). */
+/** Natural endings + death-intercept skills (Loyal Vassal / King's Return). */
 function resolveEnding(state: MatchState, events: MatchEvent[]): void {
   if (state.status === "ended" || state.pending) return;
 
@@ -93,7 +93,7 @@ function isDraw(status: string): boolean {
   return status === "stalemate" || status.startsWith("draw");
 }
 
-/** 용맹한 신하: swap the mated king with a surviving pawn onto a safe square. */
+/** Loyal Vassal: swap the mated king with a surviving pawn onto a safe square. */
 function tryLoyalVassal(state: MatchState, mated: Color, events: MatchEvent[]): boolean {
   const card = findCard(state, mated, "loyal-vassal");
   if (!card || (card.usesLeft !== null && card.usesLeft <= 0)) return false;
@@ -113,13 +113,13 @@ function tryLoyalVassal(state: MatchState, mated: Color, events: MatchEvent[]): 
     markUsed(card);
     state.rules = deriveRules(state);
     onTurnStart(state, opposite(mated), events);
-    events.push({ type: "toast", text: "용맹한 신하 — 폰이 대신 희생!" });
+    events.push({ type: "toast", text: "Loyal Vassal — a pawn dies in your place!" });
     return true;
   }
   return false;
 }
 
-/** 왕의 귀환: remove the king and await a revival placement from the mated side. */
+/** King's Return: remove the king and await a revival placement from the mated side. */
 function startKingsReturn(state: MatchState, mated: Color, events: MatchEvent[]): boolean {
   const card = findCard(state, mated, "kings-return");
   if (!card || (card.usesLeft !== null && card.usesLeft <= 0)) return false;
@@ -129,7 +129,7 @@ function startKingsReturn(state: MatchState, mated: Color, events: MatchEvent[])
   nb[king] = null;
   state.chess = { ...state.chess, board: nb };
   state.pending = { kind: "kings-return", color: mated };
-  events.push({ type: "toast", text: "왕의 귀환: 부활 위치를 선택하세요" });
+  events.push({ type: "toast", text: "King's Return: pick a revival square" });
   return true;
 }
 
@@ -153,7 +153,7 @@ function mostValuableDead(grave: PieceType[]): PieceType | null {
   return grave.reduce((a, b) => (PIECE_VALUE[b] > PIECE_VALUE[a] ? b : a));
 }
 
-// ── reposition skills (물러서기 / 십자와 대각 / 기습 행군) ──────
+// ── reposition skills (Retreat / Cross & Diagonal / Raid March) ──────
 function repositionDests(board: (Piece | null)[], id: string, from: Square): Square[] {
   const piece = board[from]!;
   const f = fileOf(from);
@@ -193,7 +193,7 @@ function repositionSource(id: string, type: PieceType): boolean {
   return false;
 }
 
-// ── titan (거신병) ──────────────────────────────────────────
+// ── titan ───────────────────────────────────────────────────
 const NEIGHBORS: [number, number][] = [
   [-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1],
 ];
@@ -244,7 +244,7 @@ export function reduce(prev: MatchState, action: Action, rng: Rng = Math.random)
       const phantom = action.type === "phantom-move";
       if (action.from === s.players[acting].lockedFrom) return fail("piece is locked this turn");
 
-      // 거신병: an enemy move onto a titan cell is an attack, not a move.
+      // Titan: an enemy move onto a titan cell is an attack, not a move.
       if (s.titan && s.titan.cells.includes(action.to)) {
         if (acting === s.titan.owner) return fail("cannot move onto your titan");
         return titanHit(s, action.from, action.to, events);
@@ -294,7 +294,7 @@ export function reduce(prev: MatchState, action: Action, rng: Rng = Math.random)
       s.chess = { ...s.chess, board: nb, enPassant: null };
       if (isInCheck(s.chess, acting, s.rules)) return fail("would expose the king");
       markUsed(card);
-      events.push({ type: "toast", text: "순간이동!" });
+      events.push({ type: "toast", text: "Teleport!" });
       endTurn(s, acting, events);
       break;
     }
@@ -322,10 +322,10 @@ export function reduce(prev: MatchState, action: Action, rng: Rng = Math.random)
       }
       followEffects(s, acting, action.from, action.to);
       markUsed(card);
-      events.push({ type: "toast", text: "스킬 이동!" });
+      events.push({ type: "toast", text: "Skill move!" });
       const meta = skillMeta(action.type);
       if (meta?.consumesTurn) endTurn(s, acting, events);
-      else s.rules = deriveRules(s); // 기습 행군: keeps the turn
+      else s.rules = deriveRules(s); // Raid March: keeps the turn
       break;
     }
 
@@ -337,7 +337,7 @@ export function reduce(prev: MatchState, action: Action, rng: Rng = Math.random)
       s.players[acting].protectedSquare = action.sq;
       markUsed(card);
       s.rules = deriveRules(s);
-      events.push({ type: "toast", text: "철벽 방어!" });
+      events.push({ type: "toast", text: "Iron Guard!" });
       break;
     }
 
@@ -346,7 +346,7 @@ export function reduce(prev: MatchState, action: Action, rng: Rng = Math.random)
       if (!card) return fail("one-more not ready");
       s.players[acting].extraTurnPending = true;
       markUsed(card);
-      events.push({ type: "toast", text: "한번 더 준비" });
+      events.push({ type: "toast", text: "One More armed" });
       break;
     }
 
@@ -355,7 +355,7 @@ export function reduce(prev: MatchState, action: Action, rng: Rng = Math.random)
       if (!card) return fail("cloak not ready");
       s.players[acting].cloakTurnsLeft = 5;
       markUsed(card);
-      events.push({ type: "toast", text: "은폐!" });
+      events.push({ type: "toast", text: "Cloak!" });
       endTurn(s, acting, events);
       break;
     }
@@ -367,7 +367,7 @@ export function reduce(prev: MatchState, action: Action, rng: Rng = Math.random)
       if (action.index < 0 || action.index >= s.players[opp].deck.length) return fail("bad card index");
       if (!s.players[acting].revealed.includes(action.index)) s.players[acting].revealed.push(action.index);
       markUsed(card);
-      events.push({ type: "toast", text: "선견지명" });
+      events.push({ type: "toast", text: "Foresight" });
       break;
     }
 
@@ -393,7 +393,7 @@ export function reduce(prev: MatchState, action: Action, rng: Rng = Math.random)
         board[action.sq] = null;
       }
       events.push({ type: "gamble", success });
-      events.push({ type: "toast", text: success ? "진화 성공!" : "진화 실패 — 폭발" });
+      events.push({ type: "toast", text: success ? "Evolve succeeded!" : "Evolve failed — it explodes" });
       endTurn(s, acting, events);
       break;
     }
@@ -413,14 +413,14 @@ export function reduce(prev: MatchState, action: Action, rng: Rng = Math.random)
         if (i >= 0) s.players[acting].grave.splice(i, 1);
         s.pending = { kind: "revive-place", color: acting, piece: reviveType };
         events.push({ type: "gamble", success: true });
-        events.push({ type: "toast", text: "부활 성공! 놓을 칸을 선택" });
+        events.push({ type: "toast", text: "Revive succeeded! Pick a square" });
       } else {
         s.players[acting].grave.push(fuel.type);
         board[action.fuel] = null;
         events.push({ type: "gamble", success: false });
-        events.push({ type: "toast", text: "부활 실패 — 폭발" });
+        events.push({ type: "toast", text: "Revive failed — it explodes" });
       }
-      break; // 부활 does not consume the turn
+      break; // Revive does not consume the turn
     }
 
     case "sacrifice-start": {
@@ -436,7 +436,7 @@ export function reduce(prev: MatchState, action: Action, rng: Rng = Math.random)
       s.players[acting].grave.push(p.type);
       markUsed(card);
       s.pending = { kind: "sacrifice", color: acting, movesLeft: 3, moved: [] };
-      events.push({ type: "toast", text: "희생 완료 — 기물 3개 이동 (포획 불가)" });
+      events.push({ type: "toast", text: "Sacrificed — move 3 pieces (no captures)" });
       break;
     }
 
@@ -456,7 +456,7 @@ export function reduce(prev: MatchState, action: Action, rng: Rng = Math.random)
       s.players[acting].tempQueens = temp;
       s.players[acting].tempQueensTurnsLeft = 5;
       markUsed(card);
-      events.push({ type: "toast", text: "해방! (5턴 후 폰으로)" });
+      events.push({ type: "toast", text: "Liberation! (reverts to pawns in 5 turns)" });
       endTurn(s, acting, events);
       break;
     }
@@ -476,7 +476,7 @@ export function reduce(prev: MatchState, action: Action, rng: Rng = Math.random)
       s.undo = null;
       markUsed(card);
       s.rules = deriveRules(s);
-      events.push({ type: "toast", text: "무르기!" });
+      events.push({ type: "toast", text: "Undo!" });
       // Turn is the opponent's again; no fresh turn-start (they resume).
       break;
     }
@@ -547,7 +547,7 @@ function reducePending(s: MatchState, action: Action, events: MatchEvent[]): Red
       board[action.sq] = { color, type: p.piece };
       s.players[color].lockedFrom = action.sq; // can't move it this turn
       s.pending = null;
-      events.push({ type: "toast", text: "부활 배치 완료" });
+      events.push({ type: "toast", text: "Revived piece placed" });
       return { ok: true, state: s, events }; // does not consume the turn
     }
     return fail("expected revive-place");
@@ -568,7 +568,7 @@ function reducePending(s: MatchState, action: Action, events: MatchEvent[]): Red
       const card = findCard(s, color, "kings-return");
       if (card) markUsed(card);
       s.pending = null;
-      events.push({ type: "toast", text: "왕의 귀환!" });
+      events.push({ type: "toast", text: "King's Return!" });
       // Revival turn is skipped: pass to the opponent.
       s.chess = { ...s.chess, turn: opposite(color) };
       onTurnStart(s, opposite(color), events);
@@ -617,7 +617,7 @@ function titanFuse(s: MatchState, acting: Color, events: MatchEvent[]): ReduceRe
   s.chess = { ...s.chess, board: nb, enPassant: null };
   s.titan = { owner: acting, cells: cells4, hp: 3 };
   markUsed(card);
-  events.push({ type: "toast", text: "융합 — 거신병 강림!" });
+  events.push({ type: "toast", text: "Fusion — the Titan rises!" });
   if (findKing(s.chess.board, opposite(acting)) < 0) {
     endGame(s, events, acting, "titan-crush");
     return { ok: true, state: s, events };
@@ -640,7 +640,7 @@ function titanMove(s: MatchState, destCells: Square[], events: MatchEvent[]): Re
   }
   s.chess = { ...s.chess, board: nb, enPassant: null };
   s.titan = { owner, cells: destCells, hp: titan.hp };
-  events.push({ type: "toast", text: "거신병 진격!" });
+  events.push({ type: "toast", text: "The Titan advances!" });
   if (killedKing || findKing(s.chess.board, opposite(owner)) < 0) {
     endGame(s, events, owner, "titan-crush");
     return { ok: true, state: s, events };
@@ -665,7 +665,7 @@ function titanHit(s: MatchState, from: Square, to: Square, events: MatchEvent[])
     s.titan = null;
     endGame(s, events, acting, "titan-explode");
   } else {
-    events.push({ type: "toast", text: `거신병 피격! (HP ${s.titan.hp})` });
+    events.push({ type: "toast", text: `Titan hit! (HP ${s.titan.hp})` });
   }
   s.rules = deriveRules(s);
   return { ok: true, state: s, events };

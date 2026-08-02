@@ -54,12 +54,12 @@ const ROOK_DIRS: ReadonlyArray<[number, number]> = [
   [0, -1],
 ];
 
-/** 철벽 방어: a piece on a protected square cannot be captured. */
+/** Iron Guard: a piece on a protected square cannot be captured. */
 function isProtected(rules: SkillRules | undefined, sq: Square): boolean {
   return rules?.protected?.includes(sq) ?? false;
 }
 
-/** 민첩한 나이트 extra jumps, per color (net (±2, +3) toward the enemy). */
+/** Agile Knight extra jumps, per color (net (±2, +3) toward the enemy). */
 function agileKnightDeltas(color: Color): ReadonlyArray<[number, number]> {
   return color === "w"
     ? [
@@ -93,7 +93,7 @@ export function isSquareAttacked(
     }
   }
 
-  // 농민 봉기: byColor pawns also threaten the square straight ahead of them,
+  // Peasant Revolt: byColor pawns also threaten the square straight ahead of them,
   // so a pawn one rank "behind" `sq` (toward its own side) attacks it.
   if (rules?.peasantRevolt?.[byColor] && onBoard(f, pawnRank)) {
     const p = board[makeSquare(f, pawnRank)];
@@ -108,7 +108,7 @@ export function isSquareAttacked(
     }
   }
 
-  // 민첩한 나이트: byColor knights also threaten via the elephant jump. A knight
+  // Agile Knight: byColor knights also threaten via the elephant jump. A knight
   // attacking `sq` sits at `sq - delta`.
   if (rules?.agileKnight?.[byColor]) {
     for (const [df, dr] of agileKnightDeltas(byColor)) {
@@ -128,7 +128,7 @@ export function isSquareAttacked(
   }
 
   // Sliding attacks: bishop/queen on diagonals, rook/queen on files/ranks.
-  // 혼란 swaps which slider type covers which rays (queen always covers both).
+  // Chaos swaps which slider type covers which rays (queen always covers both).
   const diagSlider = rules?.chaos ? "r" : "b";
   const orthoSlider = rules?.chaos ? "b" : "r";
   for (const [df, dr] of BISHOP_DIRS) {
@@ -286,7 +286,7 @@ function genSlide(
         }
         break; // enemies always block
       } else if (jumpFriendly) {
-        // 유령 기물: pass over the friendly piece and keep going.
+        // Phantom: pass over the friendly piece and keep going.
       } else {
         break; // friendly piece blocks
       }
@@ -328,7 +328,7 @@ function genPawn(
       }
     }
   } else if (
-    // 농민 봉기: capture an enemy piece directly ahead (blocked square).
+    // Peasant Revolt: capture an enemy piece directly ahead (blocked square).
     rules?.peasantRevolt?.[piece.color] &&
     onBoard(f, oneRank)
   ) {

@@ -3,9 +3,10 @@ import { gameById } from "../games.js";
 import { driveMatchmaking, type Matchmaking } from "../net.js";
 import type { RoomSummary } from "../types.js";
 import { multiScreen } from "./multi.js";
+import { art, icon, objectUrl } from "../ui/art.js";
 
 /**
- * 참여하기: browse the server's open rooms and join one (password prompt if
+ * Join Room: browse the server's open rooms and join one (password prompt if
  * locked), or type an invite code directly. Joining hands off to the game view
  * once the host's match starts.
  */
@@ -13,10 +14,10 @@ export const joinRoomScreen: Screen = (ctx: AppContext) => {
   let mm: Matchmaking;
 
   const codeInput = el("input", { class: "field-input" }) as HTMLInputElement;
-  codeInput.placeholder = "초대코드";
+  codeInput.placeholder = "Invite code";
   codeInput.maxLength = 8;
   const codePw = el("input", { class: "field-input" }) as HTMLInputElement;
-  codePw.placeholder = "비밀번호 (있는 경우)";
+  codePw.placeholder = "Password (if any)";
   codePw.maxLength = 16;
 
   const errorLine = el("div", { class: "form-error" });
@@ -24,20 +25,20 @@ export const joinRoomScreen: Screen = (ctx: AppContext) => {
 
   ctx.root.appendChild(
     el("div", { class: "screen join-screen" }, [
-      el("button", { class: "btn btn-ghost corner", text: "← 뒤로", onclick: () => ctx.navigate(multiScreen) }),
-      el("h1", { class: "screen-title", text: "참여하기" }),
+      el("button", { class: "btn btn-ghost corner", text: "← Back", onclick: () => ctx.navigate(multiScreen) }),
+      el("h1", { class: "screen-title", text: "Join Room" }),
       el("div", { class: "glass form-card" }, [
-        el("label", { class: "field-label", text: "초대코드로 입장" }),
+        el("label", { class: "field-label", text: "Join with an invite code" }),
         el("div", { class: "code-join-row" }, [codeInput, codePw]),
         el("button", {
           class: "btn btn-primary btn-block",
-          text: "입장",
+          text: "Join",
           onclick: () => join(codeInput.value, codePw.value),
         }),
       ]),
       el("div", { class: "list-head" }, [
-        el("span", { class: "field-label", text: "열린 방" }),
-        el("button", { class: "btn btn-ghost btn-small", text: "새로고침", onclick: () => refresh() }),
+        el("span", { class: "field-label", text: "Open rooms" }),
+        el("button", { class: "btn btn-ghost btn-small", text: "Refresh", onclick: () => refresh() }),
       ]),
       errorLine,
       listBox,
@@ -53,26 +54,26 @@ export const joinRoomScreen: Screen = (ctx: AppContext) => {
   }
 
   function join(code: string, password: string): void {
-    if (!code.trim()) return setError("초대코드를 입력하세요");
+    if (!code.trim()) return setError("Enter an invite code");
     setError("");
     mm.send({ type: "join-room", code: code.trim(), password: password.trim(), deck: [] });
   }
 
   function renderRooms(rooms: RoomSummary[]): void {
     if (rooms.length === 0) {
-      listBox.replaceChildren(el("div", { class: "list-empty", text: "열린 방이 없습니다. 방을 만들어 보세요!" }));
+      listBox.replaceChildren(el("div", { class: "list-empty", text: "No open rooms. Try creating one!" }));
       return;
     }
     listBox.replaceChildren(
       ...rooms.map((room) => {
         const game = gameById(room.gameId);
         const card = el("div", { class: "glass room-card" }, [
-          el("div", { class: "room-icon", text: game?.icon ?? "?" }),
+          art(objectUrl(room.gameId), "room-icon"),
           el("div", { class: "room-body" }, [
             el("span", { class: "room-title", text: room.title }),
             el("span", { class: "room-meta", text: `${game?.name ?? room.gameId}${room.locked ? " · 🔒" : ""}` }),
           ]),
-          el("button", { class: "btn btn-primary btn-small", text: "입장", onclick: () => onJoinRoom(room, card) }),
+          el("button", { class: "btn btn-primary btn-small", text: "Join", onclick: () => onJoinRoom(room, card) }),
         ]);
         return card;
       }),
@@ -84,12 +85,12 @@ export const joinRoomScreen: Screen = (ctx: AppContext) => {
     // Locked: reveal an inline password field on this card.
     const pw = el("input", { class: "field-input" }) as HTMLInputElement;
     pw.type = "password";
-    pw.placeholder = "비밀번호";
+    pw.placeholder = "Password";
     pw.maxLength = 16;
     card.replaceChildren(
-      el("div", { class: "room-icon", text: "🔒" }),
+      icon("locked", "room-icon"),
       pw,
-      el("button", { class: "btn btn-primary btn-small", text: "확인", onclick: () => join(room.code, pw.value) }),
+      el("button", { class: "btn btn-primary btn-small", text: "OK", onclick: () => join(room.code, pw.value) }),
     );
     pw.focus();
     pw.onkeydown = (e) => { if (e.key === "Enter") join(room.code, pw.value); };
@@ -101,7 +102,7 @@ export const joinRoomScreen: Screen = (ctx: AppContext) => {
       onRoomList: (rooms) => renderRooms(rooms),
       onJoinFailed: (reason) => setError(reason),
       onError: (msg) => setError(msg),
-      onOpponentLeft: () => setError("상대가 나갔습니다"),
+      onOpponentLeft: () => setError("Opponent left"),
     },
     { type: "list-rooms" },
   );

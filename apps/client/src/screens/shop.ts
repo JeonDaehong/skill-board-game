@@ -1,9 +1,10 @@
 import { el, type AppContext, type Screen } from "../router.js";
 import { pillNav } from "./nav.js";
 import { topHud } from "./hud.js";
+import { art, icon, objectUrl } from "../ui/art.js";
 
 interface ShopItem {
-  icon: string;
+  art: string;
   name: string;
   desc: string;
   price: string;
@@ -11,24 +12,24 @@ interface ShopItem {
 }
 
 const ITEMS: ShopItem[] = [
-  { icon: "🃏", name: "스타터 카드팩", desc: "스킬 카드 5장 랜덤", price: "1,000", tag: "곧 출시" },
-  { icon: "♛", name: "골드 기물 스킨", desc: "체스 기물 프리미엄 스킨", price: "2,500", tag: "곧 출시" },
-  { icon: "🎴", name: "프리미엄 카드팩", desc: "희귀 카드 확률 UP", price: "3,000", tag: "곧 출시" },
-  { icon: "🖼️", name: "네온 보드 테마", desc: "보드 배경 테마", price: "1,800", tag: "곧 출시" },
-  { icon: "⚡", name: "부스트 패스", desc: "경험치 2배 (7일)", price: "1,200", tag: "곧 출시" },
-  { icon: "🏆", name: "시즌 패스", desc: "시즌 보상 트랙 해금", price: "4,900", tag: "곧 출시" },
+  { art: "pack-starter", name: "Starter Pack", desc: "5 random skill cards", price: "1,000", tag: "Soon" },
+  { art: "queen-gold", name: "Gold Piece Skin", desc: "Premium chess piece set", price: "2,500", tag: "Soon" },
+  { art: "pack-premium", name: "Premium Pack", desc: "Higher rare card odds", price: "3,000", tag: "Soon" },
+  { art: "theme-board", name: "Neon Board Theme", desc: "Board background theme", price: "1,800", tag: "Soon" },
+  { art: "boost", name: "Boost Pass", desc: "Double XP for 7 days", price: "1,200", tag: "Soon" },
+  { art: "trophy", name: "Season Pass", desc: "Unlocks the season reward track", price: "4,900", tag: "Soon" },
 ];
 
-/** 상점: pretty placeholder storefront (mock currency, all items 준비중). */
+/** Shop: placeholder storefront (mock currency, every item coming soon). */
 export const shopScreen: Screen = (ctx: AppContext) => {
   ctx.root.appendChild(
     el("div", { class: "screen tab-screen shop-screen" }, [
       topHud(ctx),
       el("div", { class: "tab-scroll" }, [
         el("div", { class: "shop-head" }, [
-          el("h1", { class: "screen-title", text: "상점" }),
+          el("h1", { class: "screen-title", text: "Shop" }),
           el("div", { class: "glass wallet" }, [
-            el("span", { class: "coin", text: "🪙" }),
+            icon("coin", "coin"),
             el("span", { class: "wallet-amount", text: "0" }),
           ]),
         ]),
@@ -36,17 +37,17 @@ export const shopScreen: Screen = (ctx: AppContext) => {
           ITEMS.map((it) =>
             el("div", { class: "glass shop-item" }, [
               it.tag ? el("span", { class: "item-tag", text: it.tag }) : null,
-              el("div", { class: "item-icon", text: it.icon }),
+              art(objectUrl(it.art), "item-icon"),
               el("div", { class: "item-name", text: it.name }),
               el("div", { class: "item-desc", text: it.desc }),
               el("button", { class: "btn btn-primary btn-small btn-block price-btn" }, [
-                el("span", { class: "coin", text: "🪙" }),
+                icon("coin", "coin"),
                 el("span", { text: it.price }),
               ]),
             ]),
           ),
         ),
-        el("div", { class: "coming-note", text: "상점은 준비 중입니다. 카드 덱 시스템과 함께 열립니다." }),
+        el("div", { class: "coming-note", text: "The shop opens alongside the card deck system." }),
       ]),
       pillNav(ctx, "shop"),
     ]),

@@ -1,10 +1,11 @@
 import { el, type AppContext, type Screen } from "../router.js";
 import { pillNav } from "./nav.js";
 import { topHud } from "./hud.js";
+import { art, icon, objectUrl } from "../ui/art.js";
 
 const NICK_KEY = "skill-board:nickname";
 
-/** 내 정보: nickname (persisted locally) + placeholder rank / record / history. */
+/** Profile: nickname (persisted locally) + placeholder rank / record / history. */
 export const profileScreen: Screen = (ctx: AppContext) => {
   const nickname = localStorage.getItem(NICK_KEY) || "Player";
 
@@ -19,20 +20,20 @@ export const profileScreen: Screen = (ctx: AppContext) => {
       el("div", { class: "stat-label", text: label }),
     ]);
 
-  const historyRow = (icon: string, title: string, result: string, win: boolean) =>
+  const historyRow = (game: string, title: string, result: string, win: boolean) =>
     el("div", { class: "glass history-row" }, [
-      el("span", { class: "history-icon", text: icon }),
+      art(objectUrl(game), "history-icon"),
       el("span", { class: "history-title", text: title }),
       el("span", { class: `history-result ${win ? "win" : "loss"}`, text: result }),
     ]);
 
   let editing = false;
-  const editBtn = el("button", { class: "btn btn-ghost btn-small", text: "닉네임 수정" });
+  const editBtn = el("button", { class: "btn btn-ghost btn-small", text: "Edit name" });
   const editRow = el("div", { class: "edit-row hidden" }, [
     nameInput,
     el("button", {
       class: "btn btn-primary btn-small",
-      text: "저장",
+      text: "Save",
       onclick: () => {
         const v = nameInput.value.trim() || "Player";
         localStorage.setItem(NICK_KEY, v);
@@ -45,34 +46,34 @@ export const profileScreen: Screen = (ctx: AppContext) => {
   function toggleEdit(on: boolean): void {
     editing = on;
     editRow.classList.toggle("hidden", !on);
-    editBtn.textContent = on ? "취소" : "닉네임 수정";
+    editBtn.textContent = on ? "Cancel" : "Edit name";
   }
 
   ctx.root.appendChild(
     el("div", { class: "screen tab-screen profile-screen" }, [
       topHud(ctx),
       el("div", { class: "tab-scroll" }, [
-        el("h1", { class: "screen-title", text: "내 정보" }),
+        el("h1", { class: "screen-title", text: "Profile" }),
         el("div", { class: "glass profile-hero" }, [
-          el("div", { class: "avatar", text: "🐺" }),
+          icon("avatar", "avatar"),
           el("div", { class: "profile-id" }, [
             nameEl,
-            el("div", { class: "profile-tag", text: "Lv.1 · 신규 플레이어" }),
+            el("div", { class: "profile-tag", text: "Lv.1 · New player" }),
           ]),
           editBtn,
         ]),
         editRow,
         el("div", { class: "stat-grid" }, [
-          stat("랭크", "Unranked", true),
-          stat("승", "0"),
-          stat("패", "0"),
-          stat("승률", "—"),
+          stat("Rank", "Unranked", true),
+          stat("Wins", "0"),
+          stat("Losses", "0"),
+          stat("Win rate", "—"),
         ]),
-        el("h3", { class: "section-title", text: "최근 대전" }),
+        el("h3", { class: "section-title", text: "Recent matches" }),
         el("div", { class: "history-list" }, [
-          historyRow("♞", "체스 · 빠른 대전", "기록 없음", true),
+          historyRow("chess", "Chess · Quick Match", "No records", true),
         ]),
-        el("div", { class: "coming-note", text: "전적·랭킹 시스템은 준비 중입니다." }),
+        el("div", { class: "coming-note", text: "Stats and ranking are coming soon." }),
       ]),
       pillNav(ctx, "profile"),
     ]),
