@@ -1,3 +1,4 @@
+import type { Player } from "@skill/games";
 import { el, type AppContext, type Screen } from "../router.js";
 import { menuScreen } from "../screens/menu.js";
 import { gameById } from "../games.js";
@@ -41,15 +42,39 @@ export function mountBoardGame(
   const statusEl = el("div", { class: "game-status" });
   const overlay = el("div", { class: "game-overlay hidden" });
 
+  /**
+   * A player's strip above / below the board: who they are, what their pieces
+   * look like, and a per-game line (stones placed, pieces captured, walls left).
+   * The strip for whoever is to move is highlighted, so the board itself doesn't
+   * have to carry the turn indicator.
+   */
+  const opp: Player = me === "b" ? "w" : "b";
+  function playerBar(who: Player, label: string): { node: HTMLElement; info: HTMLElement } {
+    const dot = el("span", { class: "pb-dot" });
+    dot.style.background = view.swatch?.(who) ?? "#8a6a2e";
+    const info = el("span", { class: "pb-info" });
+    const node = el("div", { class: "player-bar glass" }, [
+      dot,
+      el("span", { class: "pb-name", text: label }),
+      info,
+      el("span", { class: "pb-turn", text: "● to move" }),
+    ]);
+    return { node, info };
+  }
+  const oppBar = playerBar(opp, "Opponent");
+  const myBar = playerBar(me, "You");
+
   ctx.root.appendChild(
-    el("div", { class: "screen chess-screen" }, [
+    el("div", { class: "screen chess-screen board-screen" }, [
       el("div", { class: "game-topbar" }, [
         el("button", { class: "back-btn", text: "← Leave", onclick: onExit }),
         el("div", { class: "game-heading" }, [el("span", { text: game?.name ?? gameId })]),
         el("div", { class: "icon-btn", text: me === "b" ? "First" : "Second" }),
       ]),
-      statusEl,
+      oppBar.node,
       el("div", { class: "board-wrap" }, [canvas, overlay]),
+      myBar.node,
+      statusEl,
       view.controls ?? el("div"),
     ]),
   );
@@ -61,13 +86,22 @@ export function mountBoardGame(
     return session.getState();
   }
 
+  function renderBars(s: unknown, activeTurn: Player | null): void {
+    for (const [who, bar] of [[opp, oppBar], [me, myBar]] as const) {
+      bar.info.textContent = view.info?.(s, who) ?? "";
+      bar.node.classList.toggle("active", activeTurn === who);
+    }
+  }
+
   function render(): void {
     const s = state();
     view.draw(g!, canvas.width, s);
     const res = mod.result(s);
-    if (res.done) { showGameOver(); return; }
+    if (res.done) { renderBars(s, null); showGameOver(); return; }
     if (gameOverUp && !opponentLeft) { gameOverUp = false; rematchPending = false; overlay.classList.add("hidden"); overlay.replaceChildren(); }
-    statusEl.textContent = mod.turn(s) === me ? "Your turn" : "Opponent's turn…";
+    const turn = mod.turn(s);
+    renderBars(s, turn);
+    statusEl.textContent = turn === me ? "Your turn" : "Opponent's turn…";
   }
 
   function showGameOver(): void {

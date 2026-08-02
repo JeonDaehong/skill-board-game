@@ -44,6 +44,8 @@ export function preloadPieces(): Promise<void> {
 
 const LIGHT = "#e9d5b5";
 const DARK = "#a97a5a";
+const SQUARE_DEEPEN = "rgba(0, 0, 0, 0.22)";
+const SQUARE_LIFT = "rgba(255, 246, 225, 0.16)";
 const HIGHLIGHT = "rgba(90, 160, 90, 0.55)";
 const TARGET_DOT = "rgba(40, 90, 40, 0.45)";
 const SELECTED = "rgba(240, 210, 90, 0.6)";
@@ -112,8 +114,12 @@ export class BoardRenderer {
       const x = col * size;
       const y = row * size;
 
-      // Board square.
-      ctx.fillStyle = this.squareFill((file + rank) % 2 === 0 ? "dark" : "light");
+      // Board square. The textures sit close together in value, so each side is
+      // pushed apart a little — otherwise the checker pattern barely reads.
+      const isDark = (file + rank) % 2 === 0;
+      ctx.fillStyle = this.squareFill(isDark ? "dark" : "light");
+      ctx.fillRect(x, y, size, size);
+      ctx.fillStyle = isDark ? SQUARE_DEEPEN : SQUARE_LIFT;
       ctx.fillRect(x, y, size, size);
 
       // Last-move highlight.
@@ -180,7 +186,25 @@ export class BoardRenderer {
       // a king still reads as taller than a pawn, and sit it on the square's base.
       const h = size * 0.9;
       const w = (sprite.width / sprite.height) * h;
-      ctx.drawImage(sprite, x + (size - w) / 2, y + size - h - size * 0.04, w, h);
+      const dx = x + (size - w) / 2;
+      const dy = y + size - h - size * 0.04;
+
+      // Carved ivory on pale stone and dark oak on dark walnut are nearly the
+      // same value, so each piece gets a halo in the opposite direction: white
+      // pieces a shadow to sit them down, black pieces a warm rim to lift them.
+      ctx.save();
+      ctx.shadowBlur = size * 0.09;
+      if (piece.color === "w") {
+        ctx.shadowColor = "rgba(0, 0, 0, 0.8)";
+        ctx.drawImage(sprite, dx, dy, w, h);
+      } else {
+        ctx.shadowColor = "rgba(255, 228, 168, 0.95)";
+        // Canvas shadows are faint at this radius; restacking builds them up.
+        for (let i = 0; i < 3; i++) ctx.drawImage(sprite, dx, dy, w, h);
+      }
+      ctx.restore();
+
+      ctx.drawImage(sprite, dx, dy, w, h);
       return;
     }
 

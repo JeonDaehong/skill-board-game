@@ -17,6 +17,10 @@ export interface BoardView<S = unknown, M = unknown> {
   click(s: S, cx: number, cy: number, px: number): M | null;
   /** Optional pointer-move preview (e.g. Quoridor wall ghost). Coords < 0 = leave. */
   hover?(s: S, cx: number, cy: number, px: number): void;
+  /** Short per-player line for the in-game player bars (stones held, captures…). */
+  info?(s: S, player: Player): string;
+  /** What this player's pieces look like, for the bar's colour dot. */
+  swatch?(player: Player): string;
 }
 
 // Theme colors shared by the board renderers (warm dark-fantasy wood).
@@ -70,6 +74,11 @@ function omokView(): BoardView<OmokState, OmokMove> {
       const m: OmokMove = { x, y };
       return omok.isLegal(s, m) ? m : null;
     },
+    info(s, player) {
+      const n = s.board.filter((c) => c === player).length;
+      return `${n} stone${n === 1 ? "" : "s"}`;
+    },
+    swatch: (player) => (player === "b" ? STONE_B : STONE_W),
   };
 }
 
@@ -106,6 +115,9 @@ function othelloView(): BoardView<OthelloState, OthelloMove> {
 }
 
 // ── Janggi (9×10 intersections, palace, hanja) ───────────────
+/** Starting count of each piece type, per side — used to derive captures. */
+const JANGGI_SETUP: Record<string, number> = { k: 1, a: 2, e: 2, h: 2, r: 2, c: 2, s: 5 };
+
 const JGLYPH: Record<string, [string, string]> = {
   k: ["楚", "漢"], a: ["士", "士"], e: ["象", "象"], h: ["馬", "馬"], r: ["車", "車"], c: ["包", "包"], s: ["卒", "兵"],
 };
@@ -144,6 +156,17 @@ function janggiView(): BoardView<JanggiState, JanggiMove> {
         ctx.fillText(JGLYPH[p.t]![isB ? 0 : 1], gx(x, csx), gy(y, csy) + r * 0.06);
       }
     },
+    info(s, player) {
+      const enemy: Player = player === "b" ? "w" : "b";
+      const left: Record<string, number> = {};
+      for (const p of s.board) if (p && p.c === enemy) left[p.t] = (left[p.t] ?? 0) + 1;
+      const taken: string[] = [];
+      for (const [t, n] of Object.entries(JANGGI_SETUP)) {
+        for (let i = (left[t] ?? 0); i < n; i++) taken.push(JGLYPH[t]![enemy === "b" ? 0 : 1]);
+      }
+      return taken.length ? taken.join(" ") : "no captures";
+    },
+    swatch: (player) => (player === "b" ? "#1c3f6e" : "#7a2424"),
     click(s, cx, cy, px) {
       const csx = px / W, csy = px / H;
       const x = Math.max(0, Math.min(W - 1, Math.round(cx / csx - 0.5)));
@@ -239,6 +262,11 @@ function quoridorView(me: Player): BoardView<QuoridorState, QuoridorMove> {
       disc(ctx, (s.pb[0] + 0.5) * cs, (s.pb[1] + 0.5) * cs, cs * 0.34, "#1c3f6e");
       disc(ctx, (s.pw[0] + 0.5) * cs, (s.pw[1] + 0.5) * cs, cs * 0.34, "#7a2424");
     },
+    info(s, player) {
+      const n = s.walls[player];
+      return `${n} wall${n === 1 ? "" : "s"} left`;
+    },
+    swatch: (player) => (player === "b" ? "#1c3f6e" : "#7a2424"),
     hover(s, cx, cy, px) {
       if (mode !== "wall" || cx < 0) { if (ghost) { ghost = null; rerender(); } return; }
       const cs = px / N;
