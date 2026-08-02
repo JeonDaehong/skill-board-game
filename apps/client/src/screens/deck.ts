@@ -60,7 +60,9 @@ function cardEl(skill: Skill, size: "xs" | "sm" | "lg"): HTMLElement {
     children.push(
       el("div", { class: "tcg-text" }, [
         el("span", { class: "tcg-type", text: skill.type === "active" ? "ACTIVE" : "PASSIVE" }),
-        el("span", { text: skill.desc }),
+        // Pool cards render ~136px wide, where body text is an unreadable smudge;
+        // the inspector shows the full rules for whichever card is focused.
+        size === "lg" ? el("span", { text: skill.desc }) : null,
       ]),
     );
   }
