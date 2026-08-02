@@ -1,5 +1,6 @@
 import { el, type AppContext, type Screen } from "../router.js";
 import { icon, type IconName } from "../ui/art.js";
+import { t } from "../i18n.js";
 
 export type NavTab = "home" | "profile" | "shop";
 
@@ -21,8 +22,8 @@ export function pillNav(ctx: AppContext, active: NavTab): HTMLElement {
     ]);
 
   return el("nav", { class: "pill-nav glass" }, [
-    item("home", "home", "Home", async () => ({ screen: (await import("./menu.js")).menuScreen })),
-    item("profile", "profile", "Profile", async () => ({ screen: (await import("./profile.js")).profileScreen })),
-    item("shop", "shop", "Shop", async () => ({ screen: (await import("./shop.js")).shopScreen })),
+    item("home", "home", t("nav.home"), async () => ({ screen: (await import("./menu.js")).menuScreen })),
+    item("profile", "profile", t("nav.profile"), async () => ({ screen: (await import("./profile.js")).profileScreen })),
+    item("shop", "shop", t("nav.shop"), async () => ({ screen: (await import("./shop.js")).shopScreen })),
   ]);
 }

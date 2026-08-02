@@ -1,4 +1,5 @@
 import { el, type AppContext, type Screen } from "../router.js";
+import { t } from "../i18n.js";
 
 /**
  * Returns a screen that shows a 3·2·1 countdown, then navigates to `next`.
@@ -8,12 +9,12 @@ export function makeCountdown(next: Screen): Screen {
   return (ctx: AppContext) => {
     const num = el("div", { class: "countdown-num" });
     const screen = el("div", { class: "screen countdown-screen" }, [
-      el("div", { class: "countdown-label", text: "GET READY" }),
+      el("div", { class: "countdown-label", text: t("countdown.ready") }),
       num,
     ]);
     ctx.root.appendChild(screen);
 
-    const steps = ["3", "2", "1", "GO!"];
+    const steps = ["3", "2", "1", t("countdown.go")];
     let i = 0;
     const timers: number[] = [];
 

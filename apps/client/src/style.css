@@ -668,3 +668,16 @@ button { font-family: inherit; }
 .pb-info { flex: 1; min-width: 0; font-size: 0.86rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pb-turn { font-size: 0.74rem; letter-spacing: 0.1em; color: var(--gold); opacity: 0; }
 .player-bar.active .pb-turn { opacity: 1; }
+
+/* ── Language ────────────────────────────────────────────────
+   Hangul sets denser than Latin at the same size, and the card's parchment panel
+   is a fixed box, so Korean body copy is stepped down to keep it inside. */
+.lang-pick { display: flex; gap: 6px; }
+.lang-chip { cursor: pointer; border: 1px solid var(--frame); background: rgba(0, 0, 0, 0.3); color: var(--muted); font-family: var(--ui); transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease; }
+.lang-chip:hover { color: var(--fg); border-color: var(--gold-dk); }
+.lang-chip.active { background: var(--grad-gold); border-color: var(--gold-lt); color: #2a1809; font-weight: 700; }
+
+:root[data-lang="ko"] .tcg-card.lg .tcg-name { font-size: 0.92rem; }
+:root[data-lang="ko"] .tcg-card.lg .tcg-text { font-size: 0.68rem; }
+:root[data-lang="ko"] .tcg-card.sm .tcg-name { font-size: 0.62rem; }
+:root[data-lang="ko"] .hero-title { letter-spacing: 0.02em; }

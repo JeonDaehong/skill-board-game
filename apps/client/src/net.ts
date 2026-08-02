@@ -9,6 +9,7 @@ import { mountBoardGame } from "./board/controller.js";
 import { getView } from "./board/views.js";
 import { menuScreen } from "./screens/menu.js";
 import type { RoomSummary } from "./types.js";
+import { t } from "./i18n.js";
 
 export const SERVER_URL = "ws://localhost:8787";
 
@@ -49,13 +50,13 @@ export function driveMatchmaking(
   try {
     ws = new WebSocket(SERVER_URL);
   } catch {
-    handlers.onError?.("Can't reach the server");
+    handlers.onError?.(t("net.unreachable"));
     return { send: () => {}, cleanup: () => {} };
   }
 
   ws.onopen = () => ws.send(JSON.stringify(initial));
-  ws.onerror = () => handlers.onError?.("Can't reach the server — run `pnpm server` first");
-  ws.onclose = () => { if (!handedOff) handlers.onError?.("Connection closed"); };
+  ws.onerror = () => handlers.onError?.(t("net.unreachableHint"));
+  ws.onclose = () => { if (!handedOff) handlers.onError?.(t("net.closed")); };
 
   ws.onmessage = (e) => {
     const msg = JSON.parse(String(e.data));

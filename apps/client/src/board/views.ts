@@ -5,6 +5,7 @@ import {
   quoridor, QUORIDOR_SIZE, pawnMoves, type QuoridorState, type QuoridorMove,
   type GameModule, type Player,
 } from "@skill/games";
+import { t } from "../i18n.js";
 
 /** Per-game canvas view: how to draw the board and turn a click into a move. */
 export interface BoardView<S = unknown, M = unknown> {
@@ -198,9 +199,9 @@ function quoridorView(me: Player): BoardView<QuoridorState, QuoridorMove> {
   const counter = document.createElement("span");
   counter.className = "quoridor-walls";
   const refresh = () => {
-    moveBtn.textContent = "🚶 Move";
-    hBtn.textContent = "▬ H wall";
-    vBtn.textContent = "▮ V wall";
+    moveBtn.textContent = t("quoridor.move");
+    hBtn.textContent = t("quoridor.hwall");
+    vBtn.textContent = t("quoridor.vwall");
     const sel = (on: boolean) => `btn btn-small ${on ? "btn-primary" : "btn-ghost"}`;
     moveBtn.className = sel(mode === "move");
     hBtn.className = sel(mode === "wall" && orient === "h");

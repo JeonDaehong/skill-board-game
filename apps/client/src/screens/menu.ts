@@ -9,15 +9,21 @@ import { deckScreen } from "./deck.js";
 import { pillNav } from "./nav.js";
 import { topHud } from "./hud.js";
 import { icon, type IconName } from "../ui/art.js";
+import { t } from "../i18n.js";
 
-/** Single Play flow: pick a game → 3·2·1 → AI match. */
-const singlePlay: Screen = makeGamePicker(
-  (game) =>
-    makeCountdown(
-      game.id === "chess" ? makeChess({ humanColor: "w", depth: 20 }) : makeLocalBoardGame(game.id),
-    ),
-  { title: "Select Game", onBack: menuScreen },
-);
+/** Single Play flow: pick a game → 3·2·1 → AI match.
+ *
+ *  Built on entry rather than at module load: `t()` resolves once where it is
+ *  called, so a picker constructed at import time would keep the language that
+ *  was active when the bundle first ran. */
+const singlePlay: Screen = (ctx) =>
+  makeGamePicker(
+    (game) =>
+      makeCountdown(
+        game.id === "chess" ? makeChess({ humanColor: "w", depth: 20 }) : makeLocalBoardGame(game.id),
+      ),
+    { title: t("picker.title"), onBack: menuScreen },
+  )(ctx);
 
 /** Main menu (home tab): launcher-style hero + big play cards + bottom nav. */
 export function menuScreen(ctx: AppContext): void {
@@ -43,13 +49,13 @@ export function menuScreen(ctx: AppContext): void {
           el("div", { class: "hero-rule" }),
         ]),
         el("div", { class: "play-cards" }, [
-          playCard("single-play", "Single Play", () => ctx.navigate(singlePlay)),
-          playCard("online", "Online", () => ctx.navigate(multiScreen)),
+          playCard("single-play", t("menu.single"), () => ctx.navigate(singlePlay)),
+          playCard("online", t("menu.online"), () => ctx.navigate(multiScreen)),
         ]),
-        playCard("deck", "Deck Builder", () => ctx.navigate(deckScreen), "deck-cta"),
+        playCard("deck", t("menu.deck"), () => ctx.navigate(deckScreen), "deck-cta"),
         el("div", { class: "menu-util" }, [
-          util("options", "OPTION", () => ctx.navigate(optionScreen)),
-          util("quit", "QUIT", () => quit()),
+          util("options", t("menu.option"), () => ctx.navigate(optionScreen)),
+          util("quit", t("menu.quit"), () => quit()),
         ]),
       ]),
       pillNav(ctx, "home"),
@@ -60,8 +66,8 @@ export function menuScreen(ctx: AppContext): void {
 function quit(): void {
   // In a browser tab window.close() only works for script-opened windows.
   // In the eventual Tauri/Electron/Capacitor shell this maps to app exit.
-  if (confirm("Quit the game?")) {
+  if (confirm(t("menu.quitConfirm"))) {
     window.close();
-    document.body.innerHTML = '<div class="quit-msg">Game closed. You can close this window.</div>';
+    document.body.innerHTML = `<div class="quit-msg">${t("menu.quitDone")}</div>`;
   }
 }

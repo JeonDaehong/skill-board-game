@@ -5,6 +5,7 @@ import { createRoomScreen } from "./create-room.js";
 import { joinRoomScreen } from "./join-room.js";
 import { menuScreen } from "./menu.js";
 import { icon, type IconName } from "../ui/art.js";
+import { t } from "../i18n.js";
 
 /** Multi Play hub: Quick Match / Create Room / Join Room. */
 export const multiScreen: Screen = (ctx: AppContext) => {
@@ -17,19 +18,19 @@ export const multiScreen: Screen = (ctx: AppContext) => {
 
   ctx.root.appendChild(
     el("div", { class: "screen multi-screen" }, [
-      el("button", { class: "btn btn-ghost corner", text: "← Back", onclick: () => ctx.navigate(menuScreen) }),
-      el("h1", { class: "screen-title", text: "Online" }),
+      el("button", { class: "btn btn-ghost corner", text: t("common.back"), onclick: () => ctx.navigate(menuScreen) }),
+      el("h1", { class: "screen-title", text: t("multi.title") }),
       el("div", { class: "mode-list" }, [
-        card("quick-match", "Quick Match", () =>
+        card("quick-match", t("multi.quick"), () =>
           ctx.navigate(
             makeGamePicker((game) => makeQuickLobby(game.id), {
-              title: "Select Game",
+              title: t("picker.title"),
               onBack: multiScreen,
             }),
           ),
         ),
-        card("create-room", "Create Room", () => ctx.navigate(createRoomScreen)),
-        card("join-room", "Join Room", () => ctx.navigate(joinRoomScreen)),
+        card("create-room", t("multi.create"), () => ctx.navigate(createRoomScreen)),
+        card("join-room", t("multi.join"), () => ctx.navigate(joinRoomScreen)),
       ]),
     ]),
   );

@@ -427,6 +427,66 @@ or a frame around the image. It must read clearly as a silhouette at 64×64 px.
 
 파일명은 `2b.png`, `6b-gomoku.png` 로 `raw/` 에 넣어주면 된다.
 
+## P11 — 장기말 14종 + 오목돌 2종
+
+체스만 그려진 말을 쓰고 장기·오목은 캔버스로 그린 단색 원반이라 톤이 안 맞는다.
+**`5.png`(체스말 시트)를 첨부하고** 아래를 붙여넣을 것.
+
+```
+Match the attached reference sheet exactly: same hand-painted style, same
+lighting, same camera angle, same level of carved detail.
+
+A single square sprite sheet of 16 board game pieces in a perfectly even
+4 rows × 4 columns grid.
+
+CRITICAL: the janggi pieces must all be the SAME carved set — identical octagonal
+disc shape, identical camera angle (straight-on, very slightly from above),
+identical lighting and scale. Only the engraved character and the disc's colour
+change between them. They sit side by side on one board, so consistency matters
+far more than individuality.
+
+LAYOUT: every cell the same size, one piece centred with at least 12% empty
+padding on all sides, never touching a neighbouring cell. Background: one
+perfectly uniform flat solid magenta #FF00FF across the whole canvas. No cast
+shadow on the background. Each piece must read clearly at 64×64 pixels.
+
+PALETTE: deep brown #150e0a, oiled wood #2e2016 / #3b2a1b, aged ivory #e7d3a6,
+gold leaf #d8b45a / #8a6a2e, blood red #b03a34, deep indigo #1c3f6e.
+NEVER include: watermarks, signatures, borders, a board, grid lines, or a frame
+around the image. (The engraved characters listed below are part of the carving
+and ARE wanted — no other text.)
+
+THE 16 PIECES, in reading order (left to right, top to bottom):
+Rows 1-2 — the BLUE side: octagonal polished wood discs with deeply carved
+characters inlaid in deep indigo #1c3f6e:
+1. 楚   2. 士   3. 象   4. 馬
+5. 車   6. 包   7. 卒   8. (an empty octagonal blue disc, no character)
+Rows 3-4 — the RED side: the same discs with characters inlaid in blood red
+#b03a34:
+9. 漢   10. 士   11. 象   12. 馬
+13. 車  14. 包   15. 兵   16. (an empty octagonal red disc, no character)
+```
+
+이어서 오목돌은 따로 한 장 (**`1.png` 첨부**):
+
+```
+Match the attached reference sheet's hand-painted style, lighting and finish.
+
+A single wide sheet with exactly 2 objects side by side on a perfectly uniform
+flat solid magenta #FF00FF background, each centred in its half with generous
+padding, not touching.
+
+LEFT: one single go stone, glossy jet black, seen straight on from directly
+above, a soft specular highlight in the upper left, slightly domed.
+RIGHT: the same stone in polished cream white with faint warm shell veining.
+
+Both stones must be the SAME size, shape and lighting — only the colour differs.
+NEVER include: text, numbers, watermarks, signatures, borders, a board, shadows
+cast onto the background.
+```
+
+파일명은 `11-janggi.png`, `12-stones.png` 로 넣어주면 된다.
+
 ---
 
 ## 이걸로 뭐가 커버되나

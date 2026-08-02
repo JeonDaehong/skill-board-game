@@ -1,6 +1,7 @@
 import { el, type AppContext, type Screen } from "../router.js";
 import { GAMES, type GameEntry } from "../games.js";
 import { art, objectUrl } from "../ui/art.js";
+import { gameName, gameTagline, t } from "../i18n.js";
 
 export interface PickerOptions {
   /** Heading shown above the carousel. */
@@ -36,8 +37,8 @@ export function makeGamePicker(
         },
         [
           art(objectUrl(game.id), "game-icon"),
-          el("div", { class: "game-name", text: game.name }),
-          el("div", { class: "game-tag", text: game.tagline }),
+          el("div", { class: "game-name", text: gameName(game.id) }),
+          el("div", { class: "game-tag", text: gameTagline(game.id) }),
         ],
       );
       card.style.setProperty("--accent", game.color);
@@ -46,11 +47,11 @@ export function makeGamePicker(
     });
 
     const title = el("div", { class: "carousel-title" });
-    const hint = el("div", { class: "carousel-hint", text: "← → to browse, tap the center card to start" });
-    const startBtn = el("button", { class: "btn btn-primary", text: "Select", onclick: () => startCurrent() });
+    const hint = el("div", { class: "carousel-hint", text: t("picker.hint") });
+    const startBtn = el("button", { class: "btn btn-primary", text: t("picker.select"), onclick: () => startCurrent() });
 
     const screen = el("div", { class: "screen select-screen" }, [
-      el("button", { class: "btn btn-ghost corner", text: "← Back", onclick: () => ctx.navigate(opts.onBack) }),
+      el("button", { class: "btn btn-ghost corner", text: t("common.back"), onclick: () => ctx.navigate(opts.onBack) }),
       el("h1", { class: "screen-title", text: opts.title }),
       el("div", { class: "carousel" }, [
         el("button", { class: "arrow left", html: "‹", onclick: () => rotate(-1) }),
@@ -87,7 +88,7 @@ export function makeGamePicker(
         card.style.pointerEvents = abs > 3 ? "none" : "auto";
         card.classList.toggle("center", o === 0);
       });
-      title.textContent = GAMES[current]!.name;
+      title.textContent = gameName(GAMES[current]!.id);
     }
 
     function rotate(dir: number): void {

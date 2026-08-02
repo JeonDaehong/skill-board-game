@@ -3,6 +3,7 @@ import { GAMES } from "../games.js";
 import { driveMatchmaking, type Matchmaking } from "../net.js";
 import { multiScreen } from "./multi.js";
 import { art, objectUrl } from "../ui/art.js";
+import { gameName, t } from "../i18n.js";
 
 /**
  * Create Room: fill in a title / optional password / game, create the room, and
@@ -19,10 +20,10 @@ export const createRoomScreen: Screen = (ctx: AppContext) => {
 
   function showForm(): void {
     const titleInput = el("input", { class: "field-input" }) as HTMLInputElement;
-    titleInput.placeholder = "Room name";
+    titleInput.placeholder = t("room.name");
     titleInput.maxLength = 24;
     const pwInput = el("input", { class: "field-input" }) as HTMLInputElement;
-    pwInput.placeholder = "Password (optional — empty = public)";
+    pwInput.placeholder = t("room.passwordOptional");
     pwInput.maxLength = 16;
 
     const chips = el(
@@ -40,8 +41,8 @@ export const createRoomScreen: Screen = (ctx: AppContext) => {
             : undefined,
         }, [
           art(objectUrl(g.id), "chip-glyph"),
-          el("span", { text: g.name }),
-          g.playable ? null : el("span", { class: "chip-lock", text: "Soon" }),
+          el("span", { text: gameName(g.id) }),
+          g.playable ? null : el("span", { class: "chip-lock", text: t("common.soon") }),
         ]);
         return chip;
       }),
@@ -50,20 +51,20 @@ export const createRoomScreen: Screen = (ctx: AppContext) => {
     const errorLine = el("div", { class: "form-error" });
 
     container.replaceChildren(
-      el("button", { class: "btn btn-ghost corner", text: "← Back", onclick: () => ctx.navigate(multiScreen) }),
-      el("h1", { class: "screen-title", text: "Create Room" }),
+      el("button", { class: "btn btn-ghost corner", text: t("common.back"), onclick: () => ctx.navigate(multiScreen) }),
+      el("h1", { class: "screen-title", text: t("multi.create") }),
       el("div", { class: "glass form-card" }, [
-        el("label", { class: "field-label", text: "Room name" }),
+        el("label", { class: "field-label", text: t("room.name") }),
         titleInput,
-        el("label", { class: "field-label", text: "Password" }),
+        el("label", { class: "field-label", text: t("common.password") }),
         pwInput,
-        el("label", { class: "field-label", text: "Game" }),
+        el("label", { class: "field-label", text: t("room.game") }),
         chips,
-        el("div", { class: "field-note", text: "The host plays white and moves first." }),
+        el("div", { class: "field-note", text: t("room.hostNote") }),
         errorLine,
         el("button", {
           class: "btn btn-primary btn-block",
-          text: "Create room",
+          text: t("room.create"),
           onclick: () => create(titleInput.value, pwInput.value),
         }),
       ]),
@@ -76,34 +77,34 @@ export const createRoomScreen: Screen = (ctx: AppContext) => {
       {
         onRoomCreated: (code) => showWaiting(code),
         onError: (msg) => showForm(),
-        onOpponentLeft: () => showWaiting("", "Opponent left"),
+        onOpponentLeft: () => showWaiting("", t("game.oppLeft")),
       },
       { type: "create-room", title, password, gameId: selectedGame, deck: [] },
     );
   }
 
-  function showWaiting(code: string, note = "Waiting for an opponent to join…"): void {
+  function showWaiting(code: string, note = t("room.waitingJoin")): void {
     const codeBox = el("div", { class: "invite-code", text: code || "—" });
     const copyBtn = el("button", {
       class: "btn btn-ghost btn-small",
-      text: "Copy",
+      text: t("room.copy"),
       onclick: () => {
         if (code) navigator.clipboard?.writeText(code).then(
-          () => (copyBtn.textContent = "Copied ✓"),
+          () => (copyBtn.textContent = t("room.copied")),
           () => {},
         );
       },
     });
 
     container.replaceChildren(
-      el("h1", { class: "screen-title", text: "Waiting Room" }),
+      el("h1", { class: "screen-title", text: t("room.waitingTitle") }),
       el("div", { class: "glass lobby-card" }, [
-        el("div", { class: "field-label center", text: "Invite code" }),
+        el("div", { class: "field-label center", text: t("room.inviteCode") }),
         el("div", { class: "invite-row" }, [codeBox, copyBtn]),
         el("div", { class: "spinner" }),
         el("div", { class: "lobby-status", text: note }),
-        el("div", { class: "carousel-hint", text: "Share the invite code with a friend" }),
-        el("button", { class: "btn btn-ghost", text: "← Leave room", onclick: () => ctx.navigate(multiScreen) }),
+        el("div", { class: "carousel-hint", text: t("room.shareHint") }),
+        el("button", { class: "btn btn-ghost", text: t("room.leave"), onclick: () => ctx.navigate(multiScreen) }),
       ]),
     );
   }

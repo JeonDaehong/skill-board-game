@@ -3,6 +3,7 @@ import { driveMatchmaking } from "../net.js";
 import { gameById } from "../games.js";
 import { multiScreen } from "./multi.js";
 import { art, objectUrl } from "../ui/art.js";
+import { gameName, t } from "../i18n.js";
 
 /**
  * Quickstart lobby: connect, ask the server to auto-match us for `gameId`,
@@ -11,21 +12,21 @@ import { art, objectUrl } from "../ui/art.js";
 export function makeQuickLobby(gameId: string): Screen {
   return (ctx: AppContext) => {
     const game = gameById(gameId);
-    const statusLine = el("div", { class: "lobby-status", text: "Connecting…" });
+    const statusLine = el("div", { class: "lobby-status", text: t("lobby.connecting") });
     const setStatus = (t: string) => (statusLine.textContent = t);
 
     ctx.root.appendChild(
       el("div", { class: "screen lobby-screen" }, [
         el("div", { class: "glass lobby-card" }, [
           el("div", { class: "spinner" }),
-          el("h1", { class: "screen-title", text: "Quick Match" }),
+          el("h1", { class: "screen-title", text: t("multi.quick") }),
           el("div", { class: "lobby-game" }, [
             art(objectUrl(gameId), "lobby-game-icon"),
-            el("span", { text: game?.name ?? gameId }),
+            el("span", { text: game ? gameName(game.id) : gameId }),
           ]),
           statusLine,
-          el("div", { class: "carousel-hint", text: "Matching you with another player in the same game" }),
-          el("button", { class: "btn btn-ghost", text: "← Cancel", onclick: () => ctx.navigate(multiScreen) }),
+          el("div", { class: "carousel-hint", text: t("lobby.hint") }),
+          el("button", { class: "btn btn-ghost", text: t("common.cancel"), onclick: () => ctx.navigate(multiScreen) }),
         ]),
       ]),
     );
@@ -33,9 +34,9 @@ export function makeQuickLobby(gameId: string): Screen {
     const mm = driveMatchmaking(
       ctx,
       {
-        onWaiting: () => setStatus("Waiting for an opponent…"),
+        onWaiting: () => setStatus(t("lobby.waiting")),
         onError: (msg) => setStatus(msg),
-        onOpponentLeft: () => setStatus("Opponent left"),
+        onOpponentLeft: () => setStatus(t("game.oppLeft")),
       },
       { type: "quickstart", gameId, deck: [] },
     );

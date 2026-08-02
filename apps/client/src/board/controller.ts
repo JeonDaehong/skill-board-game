@@ -5,6 +5,7 @@ import { gameById } from "../games.js";
 import { createLocalBoardSession, type BoardSession } from "./session.js";
 import { getView, type BoardView } from "./views.js";
 import { getAI } from "./ai.js";
+import { gameName, t, tPassthrough } from "../i18n.js";
 
 /** Single-player entry for a board game: local session + AI, shared view. */
 export function makeLocalBoardGame(gameId: string): Screen {
@@ -57,19 +58,19 @@ export function mountBoardGame(
       dot,
       el("span", { class: "pb-name", text: label }),
       info,
-      el("span", { class: "pb-turn", text: "● to move" }),
+      el("span", { class: "pb-turn", text: t("game.toMove") }),
     ]);
     return { node, info };
   }
-  const oppBar = playerBar(opp, "Opponent");
-  const myBar = playerBar(me, "You");
+  const oppBar = playerBar(opp, t("game.opponent"));
+  const myBar = playerBar(me, t("game.you"));
 
   ctx.root.appendChild(
     el("div", { class: "screen chess-screen board-screen" }, [
       el("div", { class: "game-topbar" }, [
-        el("button", { class: "back-btn", text: "← Leave", onclick: onExit }),
-        el("div", { class: "game-heading" }, [el("span", { text: game?.name ?? gameId })]),
-        el("div", { class: "icon-btn", text: me === "b" ? "First" : "Second" }),
+        el("button", { class: "back-btn", text: t("common.leave"), onclick: onExit }),
+        el("div", { class: "game-heading" }, [el("span", { text: game ? gameName(game.id) : gameId })]),
+        el("div", { class: "icon-btn", text: me === "b" ? t("game.first") : t("game.second") }),
       ]),
       oppBar.node,
       el("div", { class: "board-wrap" }, [canvas, overlay]),
@@ -101,27 +102,27 @@ export function mountBoardGame(
     if (gameOverUp && !opponentLeft) { gameOverUp = false; rematchPending = false; overlay.classList.add("hidden"); overlay.replaceChildren(); }
     const turn = mod.turn(s);
     renderBars(s, turn);
-    statusEl.textContent = turn === me ? "Your turn" : "Opponent's turn…";
+    statusEl.textContent = turn === me ? t("game.yourTurn") : t("game.oppTurn");
   }
 
   function showGameOver(): void {
     const res = mod.result(state());
-    const msg = res.winner === "draw" ? "Draw" : res.winner === me ? "Victory! 🎉" : "Defeat";
-    statusEl.textContent = opponentLeft ? `${msg} · Opponent left` : `${msg}${res.reason ? ` · ${res.reason}` : ""}`;
+    const msg = res.winner === "draw" ? t("game.draw") : res.winner === me ? t("game.victory") : t("game.defeat");
+    statusEl.textContent = opponentLeft ? `${msg} · ${t("game.oppLeft")}` : `${msg}${res.reason ? ` · ${tPassthrough(res.reason)}` : ""}`;
 
     const actions: HTMLElement[] = [];
     if (opponentLeft) {
-      actions.push(el("div", { class: "overlay-note", text: "Opponent left" }));
+      actions.push(el("div", { class: "overlay-note", text: t("game.oppLeft") }));
     } else if (rematchPending) {
-      actions.push(el("button", { class: "start-btn waiting", text: "Waiting for opponent…" }));
+      actions.push(el("button", { class: "start-btn waiting", text: t("game.waitingOpp") }));
     } else {
       actions.push(el("button", {
         class: "start-btn",
-        text: "Rematch",
+        text: t("game.rematch"),
         onclick: () => { rematchPending = true; showGameOver(); session.rematch(); },
       }));
     }
-    actions.push(el("button", { class: "back-btn", text: "Menu", onclick: () => ctx.navigate(menuScreen) }));
+    actions.push(el("button", { class: "back-btn", text: t("common.menu"), onclick: () => ctx.navigate(menuScreen) }));
 
     overlay.replaceChildren(
       el("div", { class: "overlay-card" }, [
@@ -134,12 +135,12 @@ export function mountBoardGame(
   }
 
   function showOpponentLeft(): void {
-    statusEl.textContent = "Opponent left";
+    statusEl.textContent = t("game.oppLeft");
     overlay.replaceChildren(
       el("div", { class: "overlay-card" }, [
-        el("div", { class: "overlay-msg", text: "Opponent left" }),
+        el("div", { class: "overlay-msg", text: t("game.oppLeft") }),
         el("div", { class: "overlay-actions" }, [
-          el("button", { class: "back-btn", text: "Menu", onclick: () => ctx.navigate(menuScreen) }),
+          el("button", { class: "back-btn", text: t("common.menu"), onclick: () => ctx.navigate(menuScreen) }),
         ]),
       ]),
     );

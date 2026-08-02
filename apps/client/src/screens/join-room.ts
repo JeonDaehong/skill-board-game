@@ -4,6 +4,7 @@ import { driveMatchmaking, type Matchmaking } from "../net.js";
 import type { RoomSummary } from "../types.js";
 import { multiScreen } from "./multi.js";
 import { art, icon, objectUrl } from "../ui/art.js";
+import { gameName, t, tPassthrough } from "../i18n.js";
 
 /**
  * Join Room: browse the server's open rooms and join one (password prompt if
@@ -14,10 +15,10 @@ export const joinRoomScreen: Screen = (ctx: AppContext) => {
   let mm: Matchmaking;
 
   const codeInput = el("input", { class: "field-input" }) as HTMLInputElement;
-  codeInput.placeholder = "Invite code";
+  codeInput.placeholder = t("room.inviteCodePlaceholder");
   codeInput.maxLength = 8;
   const codePw = el("input", { class: "field-input" }) as HTMLInputElement;
-  codePw.placeholder = "Password (if any)";
+  codePw.placeholder = t("room.passwordIfAny");
   codePw.maxLength = 16;
 
   const errorLine = el("div", { class: "form-error" });
@@ -25,20 +26,20 @@ export const joinRoomScreen: Screen = (ctx: AppContext) => {
 
   ctx.root.appendChild(
     el("div", { class: "screen join-screen" }, [
-      el("button", { class: "btn btn-ghost corner", text: "← Back", onclick: () => ctx.navigate(multiScreen) }),
-      el("h1", { class: "screen-title", text: "Join Room" }),
+      el("button", { class: "btn btn-ghost corner", text: t("common.back"), onclick: () => ctx.navigate(multiScreen) }),
+      el("h1", { class: "screen-title", text: t("multi.join") }),
       el("div", { class: "glass form-card" }, [
-        el("label", { class: "field-label", text: "Join with an invite code" }),
+        el("label", { class: "field-label", text: t("room.joinByCode") }),
         el("div", { class: "code-join-row" }, [codeInput, codePw]),
         el("button", {
           class: "btn btn-primary btn-block",
-          text: "Join",
+          text: t("common.join"),
           onclick: () => join(codeInput.value, codePw.value),
         }),
       ]),
       el("div", { class: "list-head" }, [
-        el("span", { class: "field-label", text: "Open rooms" }),
-        el("button", { class: "btn btn-ghost btn-small", text: "Refresh", onclick: () => refresh() }),
+        el("span", { class: "field-label", text: t("room.openRooms") }),
+        el("button", { class: "btn btn-ghost btn-small", text: t("room.refresh"), onclick: () => refresh() }),
       ]),
       errorLine,
       listBox,
@@ -54,14 +55,14 @@ export const joinRoomScreen: Screen = (ctx: AppContext) => {
   }
 
   function join(code: string, password: string): void {
-    if (!code.trim()) return setError("Enter an invite code");
+    if (!code.trim()) return setError(t("room.needCode"));
     setError("");
     mm.send({ type: "join-room", code: code.trim(), password: password.trim(), deck: [] });
   }
 
   function renderRooms(rooms: RoomSummary[]): void {
     if (rooms.length === 0) {
-      listBox.replaceChildren(el("div", { class: "list-empty", text: "No open rooms. Try creating one!" }));
+      listBox.replaceChildren(el("div", { class: "list-empty", text: t("room.none") }));
       return;
     }
     listBox.replaceChildren(
@@ -71,9 +72,9 @@ export const joinRoomScreen: Screen = (ctx: AppContext) => {
           art(objectUrl(room.gameId), "room-icon"),
           el("div", { class: "room-body" }, [
             el("span", { class: "room-title", text: room.title }),
-            el("span", { class: "room-meta", text: `${game?.name ?? room.gameId}${room.locked ? " · 🔒" : ""}` }),
+            el("span", { class: "room-meta", text: `${game ? gameName(game.id) : room.gameId}${room.locked ? " · 🔒" : ""}` }),
           ]),
-          el("button", { class: "btn btn-primary btn-small", text: "Join", onclick: () => onJoinRoom(room, card) }),
+          el("button", { class: "btn btn-primary btn-small", text: t("common.join"), onclick: () => onJoinRoom(room, card) }),
         ]);
         return card;
       }),
@@ -85,12 +86,12 @@ export const joinRoomScreen: Screen = (ctx: AppContext) => {
     // Locked: reveal an inline password field on this card.
     const pw = el("input", { class: "field-input" }) as HTMLInputElement;
     pw.type = "password";
-    pw.placeholder = "Password";
+    pw.placeholder = t("common.password");
     pw.maxLength = 16;
     card.replaceChildren(
       icon("locked", "room-icon"),
       pw,
-      el("button", { class: "btn btn-primary btn-small", text: "OK", onclick: () => join(room.code, pw.value) }),
+      el("button", { class: "btn btn-primary btn-small", text: t("common.ok"), onclick: () => join(room.code, pw.value) }),
     );
     pw.focus();
     pw.onkeydown = (e) => { if (e.key === "Enter") join(room.code, pw.value); };
@@ -100,9 +101,9 @@ export const joinRoomScreen: Screen = (ctx: AppContext) => {
     ctx,
     {
       onRoomList: (rooms) => renderRooms(rooms),
-      onJoinFailed: (reason) => setError(reason),
+      onJoinFailed: (reason) => setError(tPassthrough(reason)),
       onError: (msg) => setError(msg),
-      onOpponentLeft: () => setError("Opponent left"),
+      onOpponentLeft: () => setError(t("game.oppLeft")),
     },
     { type: "list-rooms" },
   );

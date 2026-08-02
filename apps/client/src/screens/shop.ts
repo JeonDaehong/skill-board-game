@@ -2,6 +2,7 @@ import { el, type AppContext, type Screen } from "../router.js";
 import { pillNav } from "./nav.js";
 import { topHud } from "./hud.js";
 import { art, icon, objectUrl } from "../ui/art.js";
+import { shopDesc, shopItem, t } from "../i18n.js";
 
 interface ShopItem {
   art: string;
@@ -27,7 +28,7 @@ export const shopScreen: Screen = (ctx: AppContext) => {
       topHud(ctx),
       el("div", { class: "tab-scroll" }, [
         el("div", { class: "shop-head" }, [
-          el("h1", { class: "screen-title", text: "Shop" }),
+          el("h1", { class: "screen-title", text: t("shop.title") }),
           el("div", { class: "glass wallet" }, [
             icon("coin", "coin"),
             el("span", { class: "wallet-amount", text: "0" }),
@@ -36,10 +37,10 @@ export const shopScreen: Screen = (ctx: AppContext) => {
         el("div", { class: "shop-grid" },
           ITEMS.map((it) =>
             el("div", { class: "glass shop-item" }, [
-              it.tag ? el("span", { class: "item-tag", text: it.tag }) : null,
+              it.tag ? el("span", { class: "item-tag", text: t("common.soon") }) : null,
               art(objectUrl(it.art), "item-icon"),
-              el("div", { class: "item-name", text: it.name }),
-              el("div", { class: "item-desc", text: it.desc }),
+              el("div", { class: "item-name", text: shopItem(it.art) }),
+              el("div", { class: "item-desc", text: shopDesc(it.art) }),
               el("button", { class: "btn btn-primary btn-small btn-block price-btn" }, [
                 icon("coin", "coin"),
                 el("span", { text: it.price }),
@@ -47,7 +48,7 @@ export const shopScreen: Screen = (ctx: AppContext) => {
             ]),
           ),
         ),
-        el("div", { class: "coming-note", text: "The shop opens alongside the card deck system." }),
+        el("div", { class: "coming-note", text: t("shop.soon") }),
       ]),
       pillNav(ctx, "shop"),
     ]),

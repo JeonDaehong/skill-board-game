@@ -2,6 +2,7 @@ import { el, type AppContext, type Screen } from "../router.js";
 import { pillNav } from "./nav.js";
 import { topHud } from "./hud.js";
 import { art, icon, objectUrl } from "../ui/art.js";
+import { gameName, t } from "../i18n.js";
 
 const NICK_KEY = "skill-board:nickname";
 
@@ -28,12 +29,12 @@ export const profileScreen: Screen = (ctx: AppContext) => {
     ]);
 
   let editing = false;
-  const editBtn = el("button", { class: "btn btn-ghost btn-small", text: "Edit name" });
+  const editBtn = el("button", { class: "btn btn-ghost btn-small", text: t("profile.edit") });
   const editRow = el("div", { class: "edit-row hidden" }, [
     nameInput,
     el("button", {
       class: "btn btn-primary btn-small",
-      text: "Save",
+      text: t("common.save"),
       onclick: () => {
         const v = nameInput.value.trim() || "Player";
         localStorage.setItem(NICK_KEY, v);
@@ -46,34 +47,34 @@ export const profileScreen: Screen = (ctx: AppContext) => {
   function toggleEdit(on: boolean): void {
     editing = on;
     editRow.classList.toggle("hidden", !on);
-    editBtn.textContent = on ? "Cancel" : "Edit name";
+    editBtn.textContent = on ? t("profile.cancelEdit") : t("profile.edit");
   }
 
   ctx.root.appendChild(
     el("div", { class: "screen tab-screen profile-screen" }, [
       topHud(ctx),
       el("div", { class: "tab-scroll" }, [
-        el("h1", { class: "screen-title", text: "Profile" }),
+        el("h1", { class: "screen-title", text: t("profile.title") }),
         el("div", { class: "glass profile-hero" }, [
           icon("avatar", "avatar"),
           el("div", { class: "profile-id" }, [
             nameEl,
-            el("div", { class: "profile-tag", text: "Lv.1 · New player" }),
+            el("div", { class: "profile-tag", text: t("profile.newPlayer") }),
           ]),
           editBtn,
         ]),
         editRow,
         el("div", { class: "stat-grid" }, [
-          stat("Rank", "Unranked", true),
-          stat("Wins", "0"),
-          stat("Losses", "0"),
-          stat("Win rate", "—"),
+          stat(t("profile.rank"), t("profile.unranked"), true),
+          stat(t("profile.wins"), "0"),
+          stat(t("profile.losses"), "0"),
+          stat(t("profile.winRate"), "—"),
         ]),
-        el("h3", { class: "section-title", text: "Recent matches" }),
+        el("h3", { class: "section-title", text: t("profile.recent") }),
         el("div", { class: "history-list" }, [
-          historyRow("chess", "Chess · Quick Match", "No records", true),
+          historyRow("chess", `${gameName("chess")} · ${t("multi.quick")}`, t("profile.noRecords"), true),
         ]),
-        el("div", { class: "coming-note", text: "Stats and ranking are coming soon." }),
+        el("div", { class: "coming-note", text: t("profile.soon") }),
       ]),
       pillNav(ctx, "profile"),
     ]),

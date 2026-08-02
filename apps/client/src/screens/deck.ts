@@ -3,6 +3,7 @@ import { menuScreen } from "./menu.js";
 import { DECK_CONFIGS, type DeckConfig } from "../deck-config.js";
 import { SKILLS, skillById, type Skill } from "../skills.js";
 import { art, frameUrl, objectUrl, skillArtUrl } from "../ui/art.js";
+import { gameName, skillDesc, skillName, t } from "../i18n.js";
 
 /** cardId → how many copies the deck holds. */
 type DeckMap = Record<string, number>;
@@ -54,15 +55,15 @@ function cardEl(skill: Skill, size: "xs" | "sm" | "lg"): HTMLElement {
     artLayer,
     frame,
     el("span", { class: "tcg-gem", text: String(skill.cost) }),
-    el("div", { class: "tcg-name", text: skill.name }),
+    el("div", { class: "tcg-name", text: skillName(skill.id) }),
   ];
   if (size !== "xs") {
     children.push(
       el("div", { class: "tcg-text" }, [
-        el("span", { class: "tcg-type", text: skill.type === "active" ? "ACTIVE" : "PASSIVE" }),
+        el("span", { class: "tcg-type", text: skill.type === "active" ? t("deck.active") : t("deck.passive") }),
         // Pool cards render ~136px wide, where body text is an unreadable smudge;
         // the inspector shows the full rules for whichever card is focused.
-        size === "lg" ? el("span", { text: skill.desc }) : null,
+        size === "lg" ? el("span", { text: skillDesc(skill.id) }) : null,
       ]),
     );
   }
@@ -94,11 +95,11 @@ export const deckScreen: Screen = (ctx: AppContext) => {
   const trayRules = el("span", { class: "tray-rules" });
   const saveBtn = el("button", {
     class: "btn btn-primary btn-small",
-    text: "Save deck",
+    text: t("deck.save"),
     onclick: () => {
       saveDeck(cfg.gameId, deck);
-      saveBtn.textContent = "Saved ✓";
-      setTimeout(() => (saveBtn.textContent = "Save deck"), 1200);
+      saveBtn.textContent = t("deck.saved");
+      setTimeout(() => (saveBtn.textContent = t("deck.save")), 1200);
     },
   });
 
@@ -108,27 +109,28 @@ export const deckScreen: Screen = (ctx: AppContext) => {
     DECK_CONFIGS.map((c) =>
       el("button", { class: `deck-tab${c.gameId === cfg.gameId ? " active" : ""}`, onclick: () => switchGame(c) }, [
         art(objectUrl(c.gameId), "deck-tab-icon"),
-        el("span", { text: c.name }),
+        el("span", { text: gameName(c.gameId) }),
       ]),
     ),
   );
 
   const filterBar = el("div", { class: "pool-filters" }, [
     el("div", { class: "filter-group" }, [
-      filterChip("All", () => costFilter === null, () => { costFilter = null; renderAll(); }),
+      filterChip("cost:all", t("deck.all"), () => { costFilter = null; renderAll(); }),
       ...[1, 2, 3, 4, 5].map((c) =>
-        filterChip(`◈${c}`, () => costFilter === c, () => { costFilter = costFilter === c ? null : c; renderAll(); }),
+        filterChip(`cost:${c}`, `◈${c}`, () => { costFilter = costFilter === c ? null : c; renderAll(); }),
       ),
     ]),
     el("div", { class: "filter-group" }, [
-      filterChip("Active", () => typeFilter === "active", () => { typeFilter = typeFilter === "active" ? "all" : "active"; renderAll(); }),
-      filterChip("Passive", () => typeFilter === "passive", () => { typeFilter = typeFilter === "passive" ? "all" : "passive"; renderAll(); }),
+      filterChip("type:active", t("deck.active"), () => { typeFilter = typeFilter === "active" ? "all" : "active"; renderAll(); }),
+      filterChip("type:passive", t("deck.passive"), () => { typeFilter = typeFilter === "passive" ? "all" : "passive"; renderAll(); }),
     ]),
   ]);
 
-  function filterChip(label: string, on: () => boolean, onclick: () => void): HTMLElement {
-    const chip = el("button", { class: `filter-chip${on() ? " active" : ""}`, text: label, onclick });
-    chip.dataset.on = String(on());
+  /** `key` identifies the filter independently of its label, which is translated. */
+  function filterChip(key: string, label: string, onclick: () => void): HTMLElement {
+    const chip = el("button", { class: "filter-chip", text: label, onclick });
+    chip.dataset.filter = key;
     return chip;
   }
 
@@ -137,10 +139,10 @@ export const deckScreen: Screen = (ctx: AppContext) => {
       el("div", { class: "deck-head" }, [
         el("button", {
           class: "btn btn-ghost btn-small",
-          text: "← Back",
+          text: t("common.back"),
           onclick: () => { saveDeck(cfg.gameId, deck); ctx.navigate(menuScreen); },
         }),
-        el("h1", { class: "screen-title deck-title", text: "Deck Builder" }),
+        el("h1", { class: "screen-title deck-title", text: t("deck.title") }),
         tabs,
       ]),
       el("div", { class: "deck-main" }, [
@@ -149,7 +151,7 @@ export const deckScreen: Screen = (ctx: AppContext) => {
       ]),
       el("div", { class: "deck-tray glass" }, [
         el("div", { class: "tray-head" }, [
-          el("span", { class: "tray-label", text: "Your deck" }),
+          el("span", { class: "tray-label", text: t("deck.yours") }),
           trayCount,
           trayRules,
           saveBtn,
@@ -197,11 +199,11 @@ export const deckScreen: Screen = (ctx: AppContext) => {
     renderPool();
     renderTray();
     filterBar.querySelectorAll<HTMLElement>(".filter-chip").forEach((chip) => {
-      const label = chip.textContent ?? "";
+      const [kind, value] = (chip.dataset.filter ?? "").split(":");
       const on =
-        label === "All" ? costFilter === null
-        : label.startsWith("◈") ? costFilter === Number(label.slice(1))
-        : typeFilter === label.toLowerCase();
+        kind === "cost"
+          ? (value === "all" ? costFilter === null : costFilter === Number(value))
+          : typeFilter === value;
       chip.classList.toggle("active", on);
     });
   }
@@ -223,10 +225,10 @@ export const deckScreen: Screen = (ctx: AppContext) => {
       cardEl(focused, "lg"),
       el("div", { class: "insp-body" }, [
         el("div", { class: "insp-metas" }, [
-          meta("Cost", String(focused.cost)),
-          meta("Type", focused.type === "active" ? "Active" : "Passive"),
-          meta("Cooldown", focused.cooldown ? `${focused.cooldown} turns` : "—"),
-          meta("Uses", focused.usesPerGame ? `${focused.usesPerGame}/game` : "∞"),
+          meta(t("deck.cost"), String(focused.cost)),
+          meta(t("deck.type"), focused.type === "active" ? t("deck.active") : t("deck.passive")),
+          meta(t("deck.cooldown"), focused.cooldown ? String(focused.cooldown) : "—"),
+          meta(t("deck.uses"), focused.usesPerGame ? String(focused.usesPerGame) : "∞"),
         ]),
         el("div", { class: "insp-steps" }, [
           minus,
@@ -242,7 +244,7 @@ export const deckScreen: Screen = (ctx: AppContext) => {
       (s) => (costFilter === null || s.cost === costFilter) && (typeFilter === "all" || s.type === typeFilter),
     );
     if (pool.length === 0) {
-      grid.replaceChildren(el("div", { class: "pool-empty", text: "No cards match these filters." }));
+      grid.replaceChildren(el("div", { class: "pool-empty", text: t("deck.noMatch") }));
       return;
     }
     grid.replaceChildren(
@@ -272,17 +274,20 @@ export const deckScreen: Screen = (ctx: AppContext) => {
     const n = total();
     trayCount.textContent = `${n} / ${cfg.deckSize}`;
     trayCount.classList.toggle("full", n >= cfg.deckSize);
-    trayRules.textContent =
-      `Hand ${cfg.handSize} · ${cfg.totalMinutes} min · ${cfg.byoyomiSeconds}s byoyomi · max ${cfg.maxCopies} copies — card effects coming soon`;
+    trayRules.textContent = t("deck.rules")
+      .replace("{hand}", String(cfg.handSize))
+      .replace("{min}", String(cfg.totalMinutes))
+      .replace("{byo}", String(cfg.byoyomiSeconds))
+      .replace("{copies}", String(cfg.maxCopies));
 
     const entries = Object.entries(deck)
       .map(([id, count]) => ({ skill: skillById(id)!, count }))
       .filter((e) => e.skill)
-      .sort((a, b) => a.skill.cost - b.skill.cost || a.skill.name.localeCompare(b.skill.name));
+      .sort((a, b) => a.skill.cost - b.skill.cost || skillName(a.skill.id).localeCompare(skillName(b.skill.id)));
 
     if (entries.length === 0) {
       tray.replaceChildren(
-        el("div", { class: "tray-empty", text: "Click a card to add it. Right-click to remove." }),
+        el("div", { class: "tray-empty", text: t("deck.empty") }),
       );
       return;
     }
@@ -290,7 +295,7 @@ export const deckScreen: Screen = (ctx: AppContext) => {
       ...entries.flatMap(({ skill, count }) =>
         Array.from({ length: count }, () => {
           const mini = cardEl(skill, "xs");
-          mini.title = `${skill.name} — click to remove`;
+          mini.title = skillName(skill.id);
           mini.onclick = () => remove(skill);
           mini.onmouseenter = () => { focused = skill; renderInspector(); };
           return mini;

@@ -16,6 +16,7 @@ import { BoardRenderer, preloadPieces, type RenderOptions } from "../render.js";
 import { skillById } from "../skills.js";
 import { createLocalSession, type Session } from "./session.js";
 import { menuScreen } from "../screens/menu.js";
+import { gameName, skillName, t } from "../i18n.js";
 
 export interface ChessOptions {
   humanColor: Color;
@@ -79,16 +80,16 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
   const oppStrip = el("div", { class: "opp-strip" });
   const skillBar = el("div", { class: "skill-bar" });
   const sacrificeBar = el("div", { class: "sacrifice-bar hidden" }, [
-    el("button", { class: "start-btn", text: "End turn", onclick: () => session.dispatch({ type: "sacrifice-end" }) }),
+    el("button", { class: "start-btn", text: t("game.endTurn"), onclick: () => session.dispatch({ type: "sacrifice-end" }) }),
   ]);
   const toast = el("div", { class: "toast hidden" });
 
   ctx.root.appendChild(
     el("div", { class: "screen chess-screen" }, [
       el("div", { class: "game-topbar" }, [
-        el("button", { class: "back-btn", text: "← Leave", onclick: onExit }),
-        el("div", { class: "game-heading" }, [el("span", { text: "Chess" })]),
-        el("div", { class: "icon-btn", text: me === "w" ? "White" : "Black" }),
+        el("button", { class: "back-btn", text: t("common.leave"), onclick: onExit }),
+        el("div", { class: "game-heading" }, [el("span", { text: gameName("chess") })]),
+        el("div", { class: "icon-btn", text: me === "w" ? t("game.white") : t("game.black") }),
       ]),
       oppStrip,
       statusEl,
@@ -148,7 +149,7 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
     const s = state();
     if (s.status === "ended") return;
     if (s.titan && s.chess.turn === s.titan.owner && s.titan.owner === me) {
-      statusEl.textContent = `Titan (HP ${s.titan.hp}) · move the Titan or a piece`;
+      statusEl.textContent = `Titan (HP ${s.titan.hp})`;
       return;
     }
     if (s.pending && s.pending.color === me) {
@@ -164,15 +165,15 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
       return;
     }
     if (targeting) {
-      const name = skillById(targeting.skillId)?.name ?? "Skill";
+      const name = skillName(targeting.skillId);
       statusEl.textContent = `${name}: pick a target (click empty space to cancel)`;
       return;
     }
     if (!myTurn()) {
-      statusEl.textContent = "Opponent's turn…";
+      statusEl.textContent = t("game.oppTurn");
       return;
     }
-    statusEl.textContent = "Your turn";
+    statusEl.textContent = t("game.yourTurn");
   }
 
   function renderSkillBar(): void {
@@ -189,15 +190,15 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
       ...deck.map((c) => {
         const meta = skillById(c.id);
         let stateText: string, cls: string;
-        if (meta?.type === "passive") { stateText = "Always on"; cls = "passive"; }
-        else if (c.usesLeft !== null && c.usesLeft <= 0) { stateText = "Spent"; cls = "spent"; }
+        if (meta?.type === "passive") { stateText = t("skill.alwaysOn"); cls = "passive"; }
+        else if (c.usesLeft !== null && c.usesLeft <= 0) { stateText = t("skill.spent"); cls = "spent"; }
         else if (c.cooldownRemaining > 0) { stateText = `CD ${c.cooldownRemaining}`; cls = "cooldown"; }
-        else { stateText = "Ready"; cls = "ready"; }
+        else { stateText = t("skill.ready"); cls = "ready"; }
         const usable = myTurn() && !busy && meta?.type === "active" && c.cooldownRemaining === 0 && (c.usesLeft === null || c.usesLeft > 0);
         const chip = el("div", { class: `skill-chip ${cls}${usable ? " usable" : ""}` }, [
           el("span", { class: "chip-icon", text: meta?.icon ?? "?" }),
           el("div", { class: "chip-body" }, [
-            el("span", { class: "chip-name", text: meta?.name ?? c.id }),
+            el("span", { class: "chip-name", text: skillName(c.id) }),
             el("span", { class: "chip-state", text: stateText }),
           ]),
         ]);
@@ -212,13 +213,13 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
     if (deck.length === 0) { oppStrip.replaceChildren(); return; }
     const revealed = new Set(state().players[me].revealed);
     oppStrip.replaceChildren(
-      el("span", { class: "opp-strip-label", text: "Opponent skills:" }),
+      el("span", { class: "opp-strip-label", text: t("game.oppSkills") }),
       ...deck.map((c, i) => {
         const shown = revealed.has(i) && c.id !== "hidden";
         const peekable = foresightPeek && !shown;
         const chip = el("div", {
           class: `opp-card${shown ? " revealed" : ""}${peekable ? " peekable" : ""}`,
-          text: shown ? skillById(c.id)?.name ?? c.id : "❓",
+          text: shown ? skillName(c.id) : "❓",
         });
         if (peekable) chip.onclick = () => { foresightPeek = false; session.dispatch({ type: "foresight", index: i }); };
         return chip;
@@ -229,26 +230,26 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
   function showGameOver(): void {
     const s = state();
     const msg =
-      s.winner === "draw" ? "Draw"
-      : s.winner === me ? "Victory! 🎉"
-      : "Defeat";
-    statusEl.textContent = opponentLeft ? `${msg} · Opponent left` : msg;
+      s.winner === "draw" ? t("game.draw")
+      : s.winner === me ? t("game.victory")
+      : t("game.defeat");
+    statusEl.textContent = opponentLeft ? `${msg} · ${t("game.oppLeft")}` : msg;
 
     const actions: HTMLElement[] = [];
     if (opponentLeft) {
-      actions.push(el("div", { class: "overlay-note", text: "Opponent left" }));
+      actions.push(el("div", { class: "overlay-note", text: t("game.oppLeft") }));
     } else if (rematchPending) {
-      actions.push(el("button", { class: "start-btn waiting", text: "Waiting for opponent…" }));
+      actions.push(el("button", { class: "start-btn waiting", text: t("game.waitingOpp") }));
     } else {
       actions.push(el("button", {
         class: "start-btn",
-        text: "Rematch",
+        text: t("game.rematch"),
         // Show the pending state first; a local session restarts synchronously
         // inside rematch() and its fresh state will tear this overlay back down.
         onclick: () => { rematchPending = true; showGameOver(); session.rematch(); },
       }));
     }
-    actions.push(el("button", { class: "back-btn", text: "Menu", onclick: () => ctx.navigate(menuScreen) }));
+    actions.push(el("button", { class: "back-btn", text: t("common.menu"), onclick: () => ctx.navigate(menuScreen) }));
 
     overlay.replaceChildren(
       el("div", { class: "overlay-card" }, [
@@ -262,12 +263,12 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
 
   /** Opponent quit before the match ended — there's no result to show. */
   function showOpponentLeft(): void {
-    statusEl.textContent = "Opponent left";
+    statusEl.textContent = t("game.oppLeft");
     overlay.replaceChildren(
       el("div", { class: "overlay-card" }, [
-        el("div", { class: "overlay-msg", text: "Opponent left" }),
+        el("div", { class: "overlay-msg", text: t("game.oppLeft") }),
         el("div", { class: "overlay-actions" }, [
-          el("button", { class: "back-btn", text: "Menu", onclick: () => ctx.navigate(menuScreen) }),
+          el("button", { class: "back-btn", text: t("common.menu"), onclick: () => ctx.navigate(menuScreen) }),
         ]),
       ]),
     );

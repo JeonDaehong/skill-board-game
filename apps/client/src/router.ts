@@ -9,18 +9,25 @@
 export interface AppContext {
   root: HTMLElement;
   navigate: (screen: Screen) => void;
+  /** Rebuild the current screen in place — used when the language changes. */
+  reload: () => void;
 }
 
 export type Screen = (ctx: AppContext) => void | (() => void);
 
 export function createApp(root: HTMLElement): AppContext {
   let cleanup: void | (() => void);
+  let current: Screen | null = null;
   const ctx: AppContext = {
     root,
     navigate(screen) {
       if (cleanup) cleanup();
       root.replaceChildren();
+      current = screen;
       cleanup = screen(ctx);
+    },
+    reload() {
+      if (current) ctx.navigate(current);
     },
   };
   return ctx;
