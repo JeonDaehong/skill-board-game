@@ -5,17 +5,18 @@ import { gameById } from "../games.js";
 import { createLocalBoardSession, type BoardSession } from "./session.js";
 import { getView, preloadBoardArt, type BoardView } from "./views.js";
 import { getAI } from "./ai.js";
+import type { LevelDef } from "../difficulty.js";
 import { gameName, t, tPassthrough } from "../i18n.js";
 
 /** How long the final position stays visible before the result card covers it. */
 const GAME_OVER_DELAY_MS = 1100;
 
 /** Single-player entry for a board game: local session + AI, shared view. */
-export function makeLocalBoardGame(gameId: string): Screen {
+export function makeLocalBoardGame(gameId: string, human: Player, level: LevelDef): Screen {
   return (ctx) => {
-    const view = getView(gameId, "b");
+    const view = getView(gameId, human);
     if (!view) return ctx.navigate(menuScreen);
-    const session = createLocalBoardSession(view.mod, getAI(gameId), "b");
+    const session = createLocalBoardSession(view.mod, getAI(gameId, level), human);
     return mountBoardGame(ctx, gameId, session, view, () => ctx.navigate(menuScreen));
   };
 }

@@ -172,6 +172,9 @@ button { font-family: inherit; }
   box-shadow: inset 0 1px 0 rgba(255, 246, 214, 0.55), 0 5px 16px rgba(180, 120, 50, 0.4);
 }
 .btn-primary:hover { filter: brightness(1.06); color: #2a1809; box-shadow: inset 0 1px 0 rgba(255, 246, 214, 0.6), 0 0 22px rgba(230, 180, 90, 0.5); }
+/* Reads as "not yet" rather than "broken": still a button, just not gold. */
+.btn-locked { color: var(--muted); border-color: var(--frame); cursor: not-allowed; }
+.btn-locked:hover { color: var(--muted); border-color: var(--frame); box-shadow: inset 0 1px 0 rgba(242, 217, 141, 0.14); }
 .btn-small { padding: 8px 16px; font-size: 0.86rem; }
 .btn-block { width: 100%; }
 .btn.corner { position: fixed; top: 18px; left: 18px; z-index: 30; }
@@ -375,6 +378,35 @@ button { font-family: inherit; }
 .item-desc { font-size: 0.78rem; color: var(--muted); min-height: 2.2em; }
 .price-btn { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 4px; }
 
+/* ── Piece cards (the one section that actually sells) ────── */
+.shop-section {
+  margin: 18px 0 0;
+  font-family: var(--display); font-size: 0.92rem; font-weight: 700;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
+}
+.shop-section-note { font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+.piece-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+/* The count is the thing a collector checks first, so it gets the corner the
+   "Soon" badge uses elsewhere. */
+.owned-tag {
+  position: absolute; top: 9px; right: 9px;
+  font-family: var(--ui); font-size: 0.64rem; font-weight: 700;
+  font-variant-numeric: tabular-nums; letter-spacing: 0.02em; white-space: nowrap;
+  padding: 3px 7px; border-radius: 999px;
+  background: #33241a; color: var(--gold-lt); border: 1px solid var(--frame);
+}
+.piece-item.maxed .owned-tag { background: var(--grad-gold); color: #2a1809; border-color: var(--gold-lt); }
+.piece-item.maxed .piece-icon { filter: saturate(0.6) brightness(0.85); }
+.piece-icon { background-color: #241811; }
+.shop-notice {
+  margin: 6px 0; padding: 9px 14px; border-radius: var(--r-sm);
+  font-family: var(--ui); font-size: 0.86rem; text-align: center;
+  border: 1px solid var(--frame);
+}
+.shop-notice.ok { color: #cfe6a8; background: #29331d; border-color: #4c6032; }
+.shop-notice.bad { color: #ffc0aa; background: #35201a; border-color: #6d3527; }
+.shop-notice.hidden { display: none; }
+
 /* ── Option ──────────────────────────────────────────────── */
 .option-list { display: flex; flex-direction: column; gap: 10px; width: min(90vw, 360px); }
 .option-row { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; background: linear-gradient(180deg, #2b1e14, #201610); border: 1px solid var(--frame); border-radius: var(--r-sm); box-shadow: var(--frame-in); }
@@ -410,7 +442,15 @@ button { font-family: inherit; }
 .game-card::before { content: ""; position: absolute; inset: 5px; border: 1px solid rgba(216, 180, 90, 0.22); border-radius: 12px; pointer-events: none; }
 .game-card.center { border-color: var(--gold); box-shadow: var(--frame-in), 0 0 44px rgba(216, 150, 70, 0.35); }
 .game-icon { width: 86px; height: 86px; object-fit: contain; filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.75)); }
+.game-card.locked { filter: saturate(0.35) brightness(0.72); }
 .game-card.locked .game-icon { color: #6a563a; }
+.game-card .card-soon {
+  position: absolute; top: 14px; right: -6px; padding: 4px 12px;
+  font-family: var(--ui); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em;
+  color: #f6e6c2; background: linear-gradient(180deg, #7a4a2a, #5a3218);
+  border: 1px solid var(--gold-dk); border-radius: 4px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+}
 .game-name { font-family: var(--display); font-size: 1.3rem; font-weight: 700; color: var(--gold-lt); }
 .game-tag { font-family: var(--ui); font-size: 0.8rem; letter-spacing: 0.06em; color: var(--muted); }
 .arrow { position: absolute; top: 50%; transform: translateY(-50%); z-index: 50; width: 46px; height: 46px; display: grid; place-items: center; border: 1px solid var(--frame); background: #241811; color: var(--gold); font-size: 2rem; line-height: 1; cursor: pointer; border-radius: 50%; }
@@ -712,3 +752,182 @@ button { font-family: inherit; }
 
 /* Why the match ended — sits under the result on the game-over card. */
 .overlay-why { margin-top: -4px; font-size: 0.92rem; color: var(--muted); letter-spacing: 0.02em; }
+
+/* ── Pre-match setup (difficulty + side) ─────────────────────
+   One screen between the picker and the board. The rungs are tinted along a
+   green→gold→red ramp so the ladder reads as a ladder before the labels are. */
+.setup-screen { gap: 26px; }
+.setup-block { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.setup-label {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.setup-options { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.setup-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 20px;
+  border: 1px solid var(--frame);
+  border-radius: 99px;
+  background: linear-gradient(180deg, #2c1f15, #221811);
+  color: var(--muted);
+  font-family: var(--ui);
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: color 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease, transform 0.1s ease;
+}
+.setup-chip:hover { color: var(--fg); border-color: var(--gold-dk); }
+.setup-chip:active { transform: translateY(1px); }
+.setup-chip.active {
+  color: #2a1809;
+  font-weight: 700;
+  border-color: var(--rung, var(--gold-lt));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--rung, var(--gold)) 82%, #ffffff), var(--rung, var(--gold)));
+  box-shadow: 0 0 18px color-mix(in srgb, var(--rung, var(--gold)) 45%, transparent);
+}
+.rung-0 { --rung: #8fc35a; }
+.rung-1 { --rung: #c3c05a; }
+.rung-2 { --rung: #d8b45a; }
+.rung-3 { --rung: #d98c3e; }
+.rung-4 { --rung: #d0603a; }
+.rung-5 { --rung: #b03a34; }
+
+.setup-note { margin: 0; font-size: 0.82rem; color: var(--muted); letter-spacing: 0.04em; text-align: center; }
+.setup-swatch {
+  width: 16px; height: 16px; flex: 0 0 auto;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.55);
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.35);
+}
+
+/* ── Setup panel ─────────────────────────────────────────────
+   One card holding two columns: who you are playing (left) and how long you
+   get (right). Every choice is a tile, so the screen reads as a board of
+   options rather than three stacked lists of words. */
+.setup-panel { width: min(96vw, 940px); padding: 26px 26px 22px; display: flex; flex-direction: column; gap: 22px; }
+.setup-cols { display: grid; grid-template-columns: 1.15fr 1fr; gap: 28px; align-items: start; }
+.setup-col { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+.setup-start { align-self: center; min-width: 240px; }
+
+/* Difficulty: the rung's own piece, its name, and a pip meter. */
+.rung-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.rung-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  padding: 12px 6px 9px;
+  border: 1px solid var(--frame); border-radius: var(--r-sm);
+  background: linear-gradient(180deg, #2c1f15, #211711);
+  box-shadow: var(--frame-in);
+  cursor: pointer;
+  transition: border-color 0.14s ease, box-shadow 0.14s ease, transform 0.1s ease, background 0.14s ease;
+}
+.rung-tile:hover { border-color: var(--gold-dk); transform: translateY(-1px); }
+.rung-tile:active { transform: translateY(1px); }
+.rung-art { width: 46px; height: 46px; object-fit: contain; filter: drop-shadow(0 3px 7px rgba(0, 0, 0, 0.7)); }
+.rung-dot {
+  width: 46px; height: 46px; display: grid; place-items: center;
+  font-family: var(--display); font-size: 1.3rem; color: var(--muted);
+}
+.rung-name { font-family: var(--ui); font-size: 0.86rem; font-weight: 700; color: var(--muted); }
+/* Pips fill left-to-right with the rung, tinted by that rung's ramp colour. */
+.rung-meter { display: flex; gap: 3px; }
+.rung-meter i { width: 9px; height: 3px; border-radius: 2px; background: #4a3826; }
+.rung-meter i.on { background: var(--rung, var(--gold)); }
+.rung-tile.active {
+  border-color: var(--rung, var(--gold-lt));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--rung, var(--gold)) 22%, #2c1f15), #211711);
+  box-shadow: var(--frame-in), 0 0 20px color-mix(in srgb, var(--rung, var(--gold)) 38%, transparent);
+}
+.rung-tile.active .rung-name { color: #fff3d8; }
+
+/* Side: that game's king in the side's own colour. */
+.side-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.side-tile {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--frame); border-radius: var(--r-sm);
+  background: linear-gradient(180deg, #2c1f15, #211711);
+  box-shadow: var(--frame-in);
+  cursor: pointer; text-align: left;
+  transition: border-color 0.14s ease, box-shadow 0.14s ease, transform 0.1s ease;
+}
+.side-tile:hover { border-color: var(--gold-dk); transform: translateY(-1px); }
+.side-art { width: 38px; height: 38px; flex: 0 0 auto; object-fit: contain; filter: drop-shadow(0 3px 7px rgba(0, 0, 0, 0.7)); }
+.side-name { font-family: var(--ui); font-size: 0.95rem; font-weight: 700; color: var(--muted); }
+.side-order { font-size: 0.72rem; color: var(--muted); opacity: 0.75; margin-left: auto; }
+.side-tile.active { border-color: var(--gold-lt); box-shadow: var(--frame-in), 0 0 20px rgba(216, 180, 90, 0.3); background: linear-gradient(180deg, #3b2a19, #241a11); }
+.side-tile.active .side-name { color: #fff3d8; }
+
+/* Time control: the notation big, the bracket name under it. Styled like the
+   in-game clock face so the setting looks like the thing it sets. */
+.clock-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.clock-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 12px 8px 10px;
+  border: 1px solid var(--frame); border-radius: var(--r-sm);
+  background: linear-gradient(180deg, #241811, #1b120c);
+  box-shadow: var(--frame-in);
+  cursor: pointer;
+  transition: border-color 0.14s ease, box-shadow 0.14s ease, transform 0.1s ease, color 0.14s ease;
+}
+.clock-tile:hover { border-color: var(--gold-dk); transform: translateY(-1px); }
+.clock-tile:active { transform: translateY(1px); }
+.clock-short {
+  font-family: var(--display); font-size: 1.5rem; font-weight: 700;
+  font-variant-numeric: tabular-nums; letter-spacing: 0.03em;
+  color: #7d6a4d; line-height: 1.1;
+}
+.clock-tile.untimed .clock-short { font-size: 1.7rem; }
+.clock-name { font-family: var(--ui); font-size: 0.82rem; font-weight: 700; color: var(--muted); }
+.clock-sub { font-size: 0.68rem; color: var(--muted); opacity: 0.72; text-align: center; }
+.clock-tile.active { border-color: var(--gold-lt); box-shadow: var(--frame-in), 0 0 20px rgba(216, 180, 90, 0.3); }
+.clock-tile.active .clock-short { color: var(--gold-lt); }
+.clock-tile.active .clock-name { color: #fff3d8; }
+.clock-note { min-height: 2.4em; }
+.clock-note.byoyomi { color: #d8a45f; }
+
+@media (max-width: 860px) {
+  .setup-cols { grid-template-columns: 1fr; gap: 22px; }
+  .rung-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 420px) {
+  .rung-grid, .clock-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ── Match clocks ────────────────────────────────────────────
+   Digits are tabular so the face doesn't jitter as the seconds roll. */
+.clock-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  width: min(94vw, 640px);
+  padding: 6px 4px;
+}
+.clock-who { font-family: var(--ui); font-size: 0.8rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.clock-face {
+  min-width: 128px;
+  padding: 6px 16px;
+  border: 1px solid var(--frame);
+  border-radius: var(--r-sm);
+  background: linear-gradient(180deg, #241811, #1b120c);
+  box-shadow: var(--frame-in);
+  font-family: var(--display);
+  font-size: 1.6rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  text-align: center;
+  color: #7d6a4d;
+  transition: color 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+/* Only the side actually on the move is lit — the clock says whose turn it is
+   as plainly as the status line does. */
+.clock-face.running { color: var(--gold-lt); border-color: var(--gold-dk); box-shadow: var(--frame-in), 0 0 18px rgba(216, 180, 90, 0.22); }
+.clock-face.low.running { color: #ff9b7a; border-color: #a4402c; box-shadow: var(--frame-in), 0 0 20px rgba(200, 70, 40, 0.4); animation: clock-pulse 1s ease-in-out infinite; }
+.clock-face.byoyomi { font-style: italic; }
+@keyframes clock-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.62; } }
+.setup-order { font-size: 0.72rem; letter-spacing: 0.08em; opacity: 0.7; }
+.setup-start { min-width: 190px; justify-content: center; }

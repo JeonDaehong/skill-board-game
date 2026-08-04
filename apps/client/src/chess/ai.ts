@@ -114,10 +114,17 @@ function scoreMove(m: Move): number {
   return s;
 }
 
-// Wall-clock budget for a full move search (iterative deepening stops here).
-// This is a turn-based game against a human, so a few seconds of thinking buys a
-// much stronger opponent at no real cost to how the game feels.
-const TIME_MS = 3000;
+/** Search budget for one move. Supplied per difficulty rung (see ../difficulty). */
+export interface SearchOptions {
+  maxDepth: number;
+  timeMs: number;
+  /**
+   * Centipawn window at the root: any move within this of the best is a
+   * candidate, chosen at random. 0 = always play the best move found.
+   */
+  margin: number;
+}
+
 let deadline = 0;
 let aborted = false;
 function timeUp(): boolean {
@@ -180,19 +187,41 @@ function negamax(
   return best;
 }
 
+/** Fisher-Yates, used to vary the root order so equal play is not identical play. */
+function shuffle(moves: Move[]): Move[] {
+  const out = [...moves];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j]!, out[i]!];
+  }
+  return out;
+}
+
 /**
- * Pick a move for the side to move. Uses iterative deepening up to `maxDepth`
- * under a wall-clock budget, so it plays as deep as time allows and returns the
- * best move from the last fully-searched depth. Ties break randomly.
+ * Pick a move for the side to move. Uses iterative deepening up to
+ * `opts.maxDepth` under a wall-clock budget, so it plays as deep as time allows
+ * and returns the best move from the last fully-searched depth.
+ *
+ * At full strength (`margin === 0`) variety comes from shuffling the root order,
+ * never from picking among "tied" scores. Once alpha has been raised, a root
+ * move that is *worse* than the best one hits the beta cutoff and returns the
+ * bound — a value equal to the current best rather than its true score.
+ * Collecting those as ties and choosing one at random meant the engine regularly
+ * played a move it had just proved inferior, throwing away the entire search.
+ *
+ * With `margin > 0` the engine is deliberately weakened, and then it *does* need
+ * real scores for the inferior moves — so every root move is searched with a
+ * full window. That costs pruning, which is why margins only appear on the
+ * shallow rungs where the extra work is affordable.
  */
 export function chooseMove(
   state: GameState,
-  maxDepth: number,
+  opts: SearchOptions,
   rules?: SkillRules,
   forbiddenFrom?: Square,
   disguise?: Color,
 ): Move | null {
-  let rootMoves = orderMoves(generateLegalMoves(state, undefined, rules));
+  let rootMoves = orderMoves(shuffle(generateLegalMoves(state, undefined, rules)));
   // Undo: the just-undone piece may not move again this turn.
   if (forbiddenFrom !== undefined) {
     const filtered = rootMoves.filter((m) => m.from !== forbiddenFrom);
@@ -200,29 +229,39 @@ export function chooseMove(
   }
   if (rootMoves.length === 0) return null;
 
-  deadline = Date.now() + TIME_MS;
+  deadline = Date.now() + opts.timeMs;
   aborted = false;
 
   let best = rootMoves[0]!;
-  let bestMoves: Move[] = [best];
+  let bestScored: { move: Move; score: number }[] = [];
 
-  for (let depth = 1; depth <= maxDepth; depth++) {
+  for (let depth = 1; depth <= opts.maxDepth; depth++) {
     let localBest = -Infinity;
-    let localMoves: Move[] = [];
+    let localMove: Move | null = null;
+    const scored: { move: Move; score: number }[] = [];
     let alpha = -Infinity;
     // Search the previous best move first for stronger pruning.
     const ordered = [best, ...rootMoves.filter((m) => m !== best)];
     for (const move of ordered) {
-      const score = -negamax(applyMove(state, move), depth - 1, -Infinity, -alpha, rules, disguise);
+      // A weakened level needs an exact score for every move, not just for the
+      // best one, so it searches with an open window instead of raising alpha.
+      const beta = opts.margin > 0 ? Infinity : -alpha;
+      const score = -negamax(applyMove(state, move), depth - 1, -Infinity, beta, rules, disguise);
       if (aborted) break;
-      if (score > localBest) { localBest = score; localMoves = [move]; }
-      else if (score === localBest) localMoves.push(move);
+      if (opts.margin > 0) scored.push({ move, score });
+      if (score > localBest) { localBest = score; localMove = move; }
       if (localBest > alpha) alpha = localBest;
     }
-    if (aborted) break; // discard incomplete depth
-    best = localMoves[0]!;
-    bestMoves = localMoves;
+    if (aborted || !localMove) break; // discard incomplete depth
+    best = localMove;
+    bestScored = scored;
     if (localBest >= MATE) break; // forced mate found
   }
-  return bestMoves[Math.floor(Math.random() * bestMoves.length)]!;
+
+  if (opts.margin > 0 && bestScored.length > 0) {
+    const top = Math.max(...bestScored.map((s) => s.score));
+    const near = bestScored.filter((s) => s.score >= top - opts.margin);
+    return near[Math.floor(Math.random() * near.length)]!.move;
+  }
+  return best;
 }

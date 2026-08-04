@@ -4,6 +4,7 @@ dist/
 .DS_Store
 coverage/
 .vite/
+.screenshots/
 
 # Watermark-stripped sheets are regenerated from assets/raw by tools/dewatermark.py
 apps/client/public/assets/clean/

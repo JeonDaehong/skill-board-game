@@ -12,12 +12,25 @@ export interface RoomInfo {
   players: number;
 }
 
+/** Main clocks, in ms remaining. The server owns these; clients only display
+ *  them. Online play uses increment controls, so there is no byoyomi field. */
+export interface Clocks {
+  w: number;
+  b: number;
+}
+
+/** Fischer control: a main budget plus a per-move bonus. Both 0 = untimed. */
+export interface TimeControl {
+  mainMs: number;
+  incrementMs: number;
+}
+
 /** Messages the client sends to the server. `deck` is the drafted card list
  *  (empty for now — the skill/card system is being reworked). */
 export type ClientMsg =
   // Matchmaking intents
-  | { type: "quickstart"; gameId: string; deck: string[] }
-  | { type: "create-room"; title: string; password?: string; gameId: string; deck: string[] }
+  | { type: "quickstart"; gameId: string; deck: string[]; timeControl?: TimeControl }
+  | { type: "create-room"; title: string; password?: string; gameId: string; deck: string[]; timeControl?: TimeControl }
   | { type: "list-rooms" }
   | { type: "join-room"; code: string; password?: string; deck: string[] }
   | { type: "cancel" }
@@ -31,7 +44,13 @@ export type ServerMsg =
   | { type: "room-created"; code: string }
   | { type: "room-list"; rooms: RoomInfo[] }
   | { type: "join-failed"; reason: string }
-  | { type: "start"; room: string; color: Color; gameId: string }
+  | {
+      type: "start";
+      room: string;
+      color: Color;
+      gameId: string;
+      timeControl: TimeControl;
+    }
   | {
       type: "state";
       /** Per-viewer game state (chess = filtered MatchState; others = board). */
@@ -40,6 +59,8 @@ export type ServerMsg =
       turn: Color;
       status: MatchState["status"];
       winner: MatchState["winner"];
+      /** Omitted for untimed rooms. */
+      clocks?: Clocks;
     }
   | { type: "error"; error: string }
   /** This viewer asked for a rematch; still waiting on the opponent to agree. */

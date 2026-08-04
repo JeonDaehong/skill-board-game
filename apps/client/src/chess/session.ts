@@ -1,6 +1,6 @@
 import { createMatch, reduce, type Action, type MatchEvent, type MatchState } from "@skill/engine";
 import type { Color } from "@skill/chess-core";
-import { chooseMove } from "./ai.js";
+import { chooseMove, type SearchOptions } from "./ai.js";
 
 /**
  * A session is the client's handle on an authoritative match. Both flavours
@@ -12,7 +12,15 @@ export type SessionNotice = "rematch-waiting" | "opponent-left";
 
 export interface Session {
   readonly myColor: Color;
+  /**
+   * True when this client owns the clock and may call a flag. A local AI game
+   * does; an online match is clocked by the server, and a client that flagged
+   * its opponent on its own reading would be trusting its own lag.
+   */
+  readonly ownsClock: boolean;
   getState(): MatchState;
+  /** Latest server-reported main clocks (ms), or null when there are none. */
+  clocks(): { w: number; b: number } | null;
   subscribe(cb: (state: MatchState, events: MatchEvent[]) => void): void;
   /** Notices that aren't state changes (rematch pending, opponent quit). */
   onNotice(cb: (notice: SessionNotice) => void): void;
@@ -27,7 +35,8 @@ export interface LocalConfig {
   humanColor: Color;
   humanDeck: string[];
   aiDeck: string[];
-  depth: number;
+  /** Search budget for the AI, taken from the chosen difficulty rung. */
+  search: SearchOptions;
 }
 
 /** Single-player: runs the same engine reducer in-process; the AI emits moves. */
@@ -60,7 +69,7 @@ export function createLocalSession(cfg: LocalConfig): Session {
       if (disposed || state.chess.turn !== aiColor || state.pending || state.status !== "playing") return;
       const disguise = state.players[cfg.humanColor].cloakTurnsLeft > 0 ? cfg.humanColor : undefined;
       const forbidden = state.players[aiColor].lockedFrom ?? undefined;
-      const move = chooseMove(state.chess, cfg.depth, state.rules, forbidden, disguise);
+      const move = chooseMove(state.chess, cfg.search, state.rules, forbidden, disguise);
       if (move) apply({ type: "move", from: move.from, to: move.to, promotion: move.promotion });
     }, 350);
   }
@@ -69,7 +78,9 @@ export function createLocalSession(cfg: LocalConfig): Session {
 
   return {
     myColor: cfg.humanColor,
+    ownsClock: true,
     getState: () => state,
+    clocks: () => null,
     subscribe: (cb) => {
       listener = cb;
     },
@@ -92,6 +103,7 @@ export function createLocalSession(cfg: LocalConfig): Session {
 /** Online: dispatch sends to the server; state arrives back over the socket. */
 export function createRemoteSession(ws: WebSocket, myColor: Color, initial: MatchState): Session {
   let state = initial;
+  let clocks: { w: number; b: number } | null = null;
   let listener: ((s: MatchState, e: MatchEvent[]) => void) | null = null;
   let noticer: ((n: SessionNotice) => void) | null = null;
 
@@ -99,6 +111,7 @@ export function createRemoteSession(ws: WebSocket, myColor: Color, initial: Matc
     const msg = JSON.parse(String(e.data));
     if (msg.type === "state") {
       state = msg.state as MatchState;
+      if (msg.clocks) clocks = msg.clocks as { w: number; b: number };
       listener?.(state, msg.events as MatchEvent[]);
     } else if (msg.type === "rematch-waiting") {
       noticer?.("rematch-waiting");
@@ -109,7 +122,9 @@ export function createRemoteSession(ws: WebSocket, myColor: Color, initial: Matc
 
   return {
     myColor,
+    ownsClock: false,
     getState: () => state,
+    clocks: () => clocks,
     subscribe: (cb) => {
       listener = cb;
     },

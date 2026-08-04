@@ -39,6 +39,7 @@ export function makeGamePicker(
           art(objectUrl(game.id), "game-icon"),
           el("div", { class: "game-name", text: gameName(game.id) }),
           el("div", { class: "game-tag", text: gameTagline(game.id) }),
+          game.playable ? null : el("div", { class: "card-soon", text: t("common.soon") }),
         ],
       );
       card.style.setProperty("--accent", game.color);
@@ -88,7 +89,14 @@ export function makeGamePicker(
         card.style.pointerEvents = abs > 3 ? "none" : "auto";
         card.classList.toggle("center", o === 0);
       });
-      title.textContent = gameName(GAMES[current]!.id);
+      const game = GAMES[current]!;
+      title.textContent = gameName(game.id);
+      // An unreleased game keeps its card in the carousel — the button and hint
+      // say why it will not start, instead of leaving the shake to explain it.
+      startBtn.textContent = game.playable ? t("picker.select") : t("common.soon");
+      startBtn.classList.toggle("btn-primary", game.playable);
+      startBtn.classList.toggle("btn-locked", !game.playable);
+      hint.textContent = game.playable ? t("picker.hint") : t("picker.soon");
     }
 
     function rotate(dir: number): void {

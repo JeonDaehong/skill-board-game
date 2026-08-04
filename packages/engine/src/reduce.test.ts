@@ -193,6 +193,32 @@ describe("reduce: Titan (titan)", () => {
   });
 });
 
+describe("reduce: flag (clock)", () => {
+  it("gives the win to the side that was not on the clock", () => {
+    const m = createMatch([], []); // white to move, so white's clock is running
+    const s = expectOk(reduce(m, { type: "flag" }));
+    expect(s.status).toBe("ended");
+    expect(s.winner).toBe("b");
+    expect(s.endReason).toBe("timeout");
+  });
+
+  it("flags the player a pending step is waiting on, not the board turn", () => {
+    const foolsMate = "rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq - 0 2";
+    const m = fenMatch(foolsMate, ["kings-return"], []);
+    const pending = expectOk(reduce(m, { type: "move", from: sq("d8"), to: sq("h4") }));
+    expect(pending.pending?.color).toBe("w");
+    const s = expectOk(reduce(pending, { type: "flag" }));
+    expect(s.status).toBe("ended");
+    expect(s.winner).toBe("b"); // white was the one being waited on
+  });
+
+  it("cannot flag a match that already ended", () => {
+    const m = createMatch([], []);
+    const ended = expectOk(reduce(m, { type: "resign" }));
+    expect(reduce(ended, { type: "flag" }).ok).toBe(false);
+  });
+});
+
 describe("reduce: death intercept", () => {
   const foolsMate = "rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq - 0 2";
 

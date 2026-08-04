@@ -3,7 +3,10 @@ import { GAMES } from "../games.js";
 import { driveMatchmaking, type Matchmaking } from "../net.js";
 import { multiScreen } from "./multi.js";
 import { art, objectUrl } from "../ui/art.js";
-import { gameName, t } from "../i18n.js";
+import {
+  TIME_CONTROLS, getTimeControlId, setTimeControlId, timeControlById, timeControlLabel,
+} from "../clock.js";
+import { gameName, getLang, t } from "../i18n.js";
 
 /**
  * Create Room: fill in a title / optional password / game, create the room, and
@@ -13,6 +16,9 @@ import { gameName, t } from "../i18n.js";
 export const createRoomScreen: Screen = (ctx: AppContext) => {
   let mm: Matchmaking | null = null;
   let selectedGame = GAMES.find((g) => g.playable)!.id;
+  // The host sets the room's clock, so this screen owns the choice rather
+  // than inheriting whatever single play last used.
+  let control = timeControlById(getTimeControlId());
 
   const container = el("div", { class: "screen create-screen" });
   ctx.root.appendChild(container);
@@ -48,6 +54,24 @@ export const createRoomScreen: Screen = (ctx: AppContext) => {
       }),
     );
 
+    const clocks = el(
+      "div",
+      { class: "game-chips" },
+      TIME_CONTROLS.map((tc) => {
+        const chip = el("button", {
+          class: `game-chip clock-pick${tc.id === control.id ? " active" : ""}`,
+          text: timeControlLabel(tc, getLang() === "ko"),
+          onclick: () => {
+            control = tc;
+            setTimeControlId(tc.id);
+            clocks.querySelectorAll(".game-chip").forEach((c) => c.classList.remove("active"));
+            chip.classList.add("active");
+          },
+        });
+        return chip;
+      }),
+    );
+
     const errorLine = el("div", { class: "form-error" });
 
     container.replaceChildren(
@@ -60,6 +84,8 @@ export const createRoomScreen: Screen = (ctx: AppContext) => {
         pwInput,
         el("label", { class: "field-label", text: t("room.game") }),
         chips,
+        el("label", { class: "field-label", text: t("setup.clock") }),
+        clocks,
         el("div", { class: "field-note", text: t("room.hostNote") }),
         errorLine,
         el("button", {
@@ -79,7 +105,14 @@ export const createRoomScreen: Screen = (ctx: AppContext) => {
         onError: (msg) => showForm(),
         onOpponentLeft: () => showWaiting("", t("game.oppLeft")),
       },
-      { type: "create-room", title, password, gameId: selectedGame, deck: [] },
+      {
+        type: "create-room",
+        title,
+        password,
+        gameId: selectedGame,
+        deck: [],
+        timeControl: { mainMs: control.mainMs, incrementMs: control.stepMs },
+      },
     );
   }
 

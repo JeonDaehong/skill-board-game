@@ -120,6 +120,8 @@ export const deckScreen: Screen = (ctx: AppContext) => {
     },
   });
 
+  // One tab per released game. With chess alone there is nothing to switch
+  // between, so the row is built but left out of the header.
   const tabs = el(
     "div",
     { class: "deck-tabs" },
@@ -160,7 +162,7 @@ export const deckScreen: Screen = (ctx: AppContext) => {
           onclick: () => { saveDeck(cfg.gameId, deck); ctx.navigate(menuScreen); },
         }),
         el("h1", { class: "screen-title deck-title", text: t("deck.title") }),
-        tabs,
+        DECK_CONFIGS.length > 1 ? tabs : null,
       ]),
       el("div", { class: "deck-main" }, [
         inspector,

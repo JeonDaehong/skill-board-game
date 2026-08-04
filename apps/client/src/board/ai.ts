@@ -2,11 +2,12 @@ import {
   other,
   OMOK_SIZE, makesFive, omok, type OmokState, type OmokMove,
   othello, flips, type OthelloState, type OthelloMove,
-  janggi, JANGGI_W, type JanggiState, type JanggiMove,
+  janggi, JANGGI_W, JANGGI_H, type JanggiState, type JanggiMove,
   quoridor, pawnMoves, distance, shortestPathCells, type QuoridorState, type QuoridorMove,
   type Player,
 } from "@skill/games";
 import { chooseBySearch } from "./search.js";
+import type { LevelDef } from "../difficulty.js";
 
 // ── Omok (threat-window eval + alpha-beta) ───────────────────
 const ON = OMOK_SIZE;
@@ -66,14 +67,22 @@ function omokCandidates(s: OmokState): OmokMove[] {
   return scored.slice(0, 14).map((c) => c.m);
 }
 
-export function omokAI(s: OmokState): OmokMove | null {
+export function omokAI(s: OmokState, lv: LevelDef): OmokMove | null {
   const me = s.turn, opp = other(me);
   const b = s.board;
   if (b.every((c) => c === null)) return { x: (ON - 1) / 2, y: (ON - 1) / 2 };
   const cands = omokCandidates(s);
+  // Take the win whenever it is there — even the bottom rung is allowed that.
   for (const c of cands) { const t = b.slice(); t[oidx(c.x, c.y)] = me; if (makesFive(t, c.x, c.y, me)) return c; }
-  for (const c of cands) { const t = b.slice(); t[oidx(c.x, c.y)] = opp; if (makesFive(t, c.x, c.y, opp)) return c; }
-  return chooseBySearch(omok, s, me, { evaluate: omokEval, moves: omokCandidates, maxDepth: 12, timeMs: 2600 });
+  // Blocking the opponent's five is the reflex that makes omok feel unbeatable,
+  // so the lowest rung plays without it.
+  if (lv.guard !== false) {
+    for (const c of cands) { const t = b.slice(); t[oidx(c.x, c.y)] = opp; if (makesFive(t, c.x, c.y, opp)) return c; }
+  }
+  return chooseBySearch(omok, s, me, {
+    evaluate: omokEval, moves: omokCandidates,
+    maxDepth: lv.maxDepth, timeMs: lv.timeMs, margin: lv.margin,
+  });
 }
 
 // ── Othello (positional + mobility, endgame solve) ───────────
@@ -128,12 +137,41 @@ export function othelloAI(s: OthelloState): OthelloMove | null {
   return chooseBySearch(othello, s, s.turn, { evaluate: othelloEval, moves: othelloCandidates, maxDepth: 20, timeMs: 2600 });
 }
 
-// ── Janggi (material + captures-first ordering) ──────────────
+// ── Janggi (material + position, captures-first ordering) ────
 const JVAL: Record<string, number> = { k: 100000, r: 130, c: 70, h: 50, e: 30, a: 30, s: 20 };
 const JW = JANGGI_W;
+
+/**
+ * Positional term, which this evaluation used to lack entirely — a pure material
+ * count gave the AI no reason to develop, advance soldiers or take the centre,
+ * so it shuffled until something was hanging.
+ *
+ * "b" (초) starts at the top and advances down the board; "w" (한) starts at the
+ * bottom and advances up.
+ */
+function janggiPos(t: string, c: Player, x: number, y: number): number {
+  const advance = c === "b" ? y : JANGGI_H - 1 - y; // 0 = home rank, 9 = enemy rank
+  const central = 4 - Math.abs(x - 4); // 4 on the middle file, 0 at the edges
+  switch (t) {
+    case "s": return advance * 3 + central; // soldiers never come back, so pushing is real progress
+    case "r": return central * 2 + advance; // chariots want open central lines
+    case "c": return central * 2; // cannons need a screen; the middle has the most
+    case "h": return central * 2 + advance;
+    case "e": return central;
+    case "a": return 0; // guards are confined to the palace anyway
+    case "k": return -advance * 3; // the general staying home is worth something
+    default: return 0;
+  }
+}
+
 function janggiEval(s: JanggiState, me: Player): number {
   let sc = 0;
-  for (const p of s.board) if (p) sc += (p.c === me ? 1 : -1) * JVAL[p.t]!;
+  for (let i = 0; i < s.board.length; i++) {
+    const p = s.board[i];
+    if (!p) continue;
+    const value = JVAL[p.t]! + janggiPos(p.t, p.c, i % JW, Math.floor(i / JW));
+    sc += (p.c === me ? 1 : -1) * value;
+  }
   return sc;
 }
 function capVal(s: JanggiState, m: JanggiMove): number {
@@ -143,8 +181,11 @@ function capVal(s: JanggiState, m: JanggiMove): number {
 function janggiCandidates(s: JanggiState): JanggiMove[] {
   return janggi.legalMoves(s).sort((a, b) => capVal(s, b) - capVal(s, a));
 }
-export function janggiAI(s: JanggiState): JanggiMove | null {
-  return chooseBySearch(janggi, s, s.turn, { evaluate: janggiEval, moves: janggiCandidates, maxDepth: 8, timeMs: 2800 });
+export function janggiAI(s: JanggiState, lv: LevelDef): JanggiMove | null {
+  return chooseBySearch(janggi, s, s.turn, {
+    evaluate: janggiEval, moves: janggiCandidates,
+    maxDepth: lv.maxDepth, timeMs: lv.timeMs, margin: lv.margin,
+  });
 }
 
 // ── Quoridor (shortest-path eval + focused wall pruning) ─────
@@ -196,7 +237,7 @@ export function quoridorAI(s: QuoridorState): QuoridorMove | null {
 }
 
 // ── registry ─────────────────────────────────────────────────
-type AnyAI = (s: unknown) => unknown;
+type AnyAI = (s: unknown, lv: LevelDef) => unknown;
 const REGISTRY: Record<string, AnyAI> = {
   omok: omokAI as AnyAI,
   othello: othelloAI as AnyAI,
@@ -204,6 +245,13 @@ const REGISTRY: Record<string, AnyAI> = {
   quoridor: quoridorAI as AnyAI,
 };
 
-export function getAI<S, M>(gameId: string): (s: S) => M | null {
-  return (REGISTRY[gameId] ?? (() => null)) as (s: S) => M | null;
+/**
+ * Bind a game's AI to a difficulty rung. Othello and Quoridor are not in the
+ * picker yet and have no ladder of their own, so they fall back to the strongest
+ * settings they already used.
+ */
+export function getAI<S, M>(gameId: string, lv: LevelDef): (s: S) => M | null {
+  const ai = REGISTRY[gameId];
+  if (!ai) return () => null;
+  return ((s: S) => ai(s, lv)) as (s: S) => M | null;
 }

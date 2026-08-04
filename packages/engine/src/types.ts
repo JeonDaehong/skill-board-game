@@ -79,6 +79,8 @@ export interface MatchState {
 export type Action =
   | { type: "move"; from: Square; to: Square; promotion?: PieceType }
   | { type: "resign" }
+  /** The side to move ran out of clock. Whoever owns the clock sends this. */
+  | { type: "flag" }
   | { type: "phantom-move"; from: Square; to: Square }
   | { type: "teleport"; a: Square; b: Square }
   | { type: "retreat"; from: Square; to: Square }

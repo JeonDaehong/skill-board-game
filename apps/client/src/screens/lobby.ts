@@ -1,5 +1,5 @@
 import { el, type AppContext, type Screen } from "../router.js";
-import { driveMatchmaking } from "../net.js";
+import { driveMatchmaking, wireTimeControl } from "../net.js";
 import { gameById } from "../games.js";
 import { multiScreen } from "./multi.js";
 import { art, objectUrl } from "../ui/art.js";
@@ -38,7 +38,8 @@ export function makeQuickLobby(gameId: string): Screen {
         onError: (msg) => setStatus(msg),
         onOpponentLeft: () => setStatus(t("game.oppLeft")),
       },
-      { type: "quickstart", gameId, deck: [] },
+      // Whoever reaches the queue first sets the clock; the server keeps theirs.
+      { type: "quickstart", gameId, deck: [], timeControl: wireTimeControl() },
     );
 
     return () => mm.cleanup();

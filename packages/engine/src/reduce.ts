@@ -229,6 +229,15 @@ export function reduce(prev: MatchState, action: Action, rng: Rng = Math.random)
   const s = cloneMatch(prev);
   const events: MatchEvent[] = [];
 
+  // A flag fall ends the match wherever it lands. It is handled ahead of the
+  // pending branch because a clock runs during multi-step skills too, and that
+  // branch would reject an action it has no case for.
+  if (action.type === "flag") {
+    const loser = s.pending ? s.pending.color : s.chess.turn;
+    endGame(s, events, opposite(loser), "timeout");
+    return { ok: true, state: s, events };
+  }
+
   if (s.pending) return reducePending(s, action, events);
 
   const acting: Color = s.chess.turn;

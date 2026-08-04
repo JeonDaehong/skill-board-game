@@ -15,10 +15,13 @@ export interface DeckConfig {
   maxCopies: number;
 }
 
+/**
+ * Only released games get a deck. Janggi (25/3/10min/10s/3) and gomoku
+ * (10/2/5min/5s/2) were tuned already — re-add their rows here when the games
+ * ship, alongside flipping `playable` in games.ts.
+ */
 export const DECK_CONFIGS: DeckConfig[] = [
   { gameId: "chess", name: "Chess", deckSize: 25, handSize: 3, totalMinutes: 10, byoyomiSeconds: 10, maxCopies: 3 },
-  { gameId: "janggi", name: "Janggi", deckSize: 25, handSize: 3, totalMinutes: 10, byoyomiSeconds: 10, maxCopies: 3 },
-  { gameId: "omok", name: "Gomoku", deckSize: 10, handSize: 2, totalMinutes: 5, byoyomiSeconds: 5, maxCopies: 2 },
 ];
 
 export function deckConfig(gameId: string): DeckConfig | undefined {

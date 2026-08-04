@@ -7,6 +7,12 @@ export interface SearchConfig<S, M> {
   moves: (s: S) => M[];
   maxDepth: number;
   timeMs: number;
+  /**
+   * Root-score window in this game's own evaluation units: any move within
+   * `margin` of the best is a candidate, chosen at random. 0 = always best.
+   * This is how the lower difficulty rungs are made losable — see ../difficulty.
+   */
+  margin?: number;
 }
 
 const WIN = 1e9;
@@ -63,20 +69,35 @@ export function chooseBySearch<S, M>(
     return best;
   }
 
+  const margin = cfg.margin ?? 0;
   let best: M = rootMoves[0]!;
+  let bestScored: { move: M; score: number }[] = [];
+
   for (let depth = 1; depth <= cfg.maxDepth; depth++) {
     let localBest: M = best;
     let bestScore = -Infinity;
+    const scored: { move: M; score: number }[] = [];
     // Search the previous best first for stronger pruning.
     const ordered = [best, ...rootMoves.filter((m) => m !== best)];
     for (const m of ordered) {
-      const score = minimax(mod.apply(root, m), depth - 1, bestScore, Infinity);
+      // A weakened level needs a real score for every root move, so it cannot
+      // narrow the window down to the best score found so far.
+      const alpha = margin > 0 ? -Infinity : bestScore;
+      const score = minimax(mod.apply(root, m), depth - 1, alpha, Infinity);
       if (aborted) break;
+      if (margin > 0) scored.push({ move: m, score });
       if (score > bestScore) { bestScore = score; localBest = m; }
     }
     if (aborted) break; // discard the incomplete depth
     best = localBest;
+    bestScored = scored;
     if (bestScore >= WIN) break; // forced win found
+  }
+
+  if (margin > 0 && bestScored.length > 0) {
+    const top = Math.max(...bestScored.map((s) => s.score));
+    const near = bestScored.filter((s) => s.score >= top - margin);
+    return near[Math.floor(Math.random() * near.length)]!.move;
   }
   return best;
 }

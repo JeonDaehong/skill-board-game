@@ -65,6 +65,37 @@ function sprite(ctx: CanvasRenderingContext2D, key: string, cx: number, cy: numb
   return true;
 }
 
+/**
+ * Sprites tinted toward a side colour, built once and cached.
+ *
+ * Both janggi sets are painted on the same tan wooden octagon and differ only in
+ * the ink of the hanja — dark blue 楚 against dark red 漢. At board scale those
+ * two darks read as the same colour and the sides become genuinely hard to tell
+ * apart, so the whole piece is pushed toward blue or red instead. `source-atop`
+ * confines the wash to the sprite's own pixels, leaving the transparent corners
+ * of the octagon alone.
+ */
+const TINTED: Record<string, HTMLCanvasElement> = {};
+
+function tintedSprite(key: string, tint: string): HTMLCanvasElement | null {
+  const cached = TINTED[key];
+  if (cached) return cached;
+  const img = ART[key];
+  if (!img) return null;
+
+  const off = document.createElement("canvas");
+  off.width = img.width;
+  off.height = img.height;
+  const c = off.getContext("2d");
+  if (!c) return null;
+  c.drawImage(img, 0, 0);
+  c.globalCompositeOperation = "source-atop";
+  c.fillStyle = tint;
+  c.fillRect(0, 0, off.width, off.height);
+  TINTED[key] = off;
+  return off;
+}
+
 function ring(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number): void {
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
@@ -168,6 +199,55 @@ const JANGGI_SETUP: Record<string, number> = { k: 1, a: 2, e: 2, h: 2, r: 2, c: 
 const JGLYPH: Record<string, [string, string]> = {
   k: ["楚", "漢"], a: ["士", "士"], e: ["象", "象"], h: ["馬", "馬"], r: ["車", "車"], c: ["包", "包"], s: ["卒", "兵"],
 };
+
+/**
+ * Side identity. Saturated blue against saturated red read clearly but was
+ * harsh, so the sides are separated by *value* instead: 초 becomes muted slate,
+ * 한 pale ivory. A brightness gap survives squinting, and colour blindness, in
+ * a way two vivid hues of equal brightness do not.
+ *
+ * The exact washes are measured rather than picked by eye. The sprite's wood
+ * face is #574740 and the board behind it #2b1d12 — both dark — so a wash that
+ * darkens either side sinks the piece into the board. These values were chosen
+ * against three constraints at once, all in WCAG contrast terms:
+ *
+ *   초 vs 한    3.01:1     the two sides must not be confusable
+ *   초 vs board 3.05:1     each side must stand off the board
+ *   한 vs board 9.18:1
+ *
+ * Shared by the wash, the rim and the player-bar dot so all three agree.
+ */
+const JANGGI_SIDE = {
+  b: {
+    wash: "rgba(100, 142, 188, 0.52)",
+    rim: "rgba(196, 218, 238, 0.5)",
+    dot: "#5e6c81",
+    ink: "#4a586d",
+    glyph: "#dce7f2",
+  },
+  w: {
+    wash: "rgba(252, 232, 198, 0.75)",
+    rim: "rgba(118, 90, 62, 0.55)",
+    dot: "#d3c0a5",
+    ink: "#d3c0a5",
+    glyph: "#4a3826",
+  },
+} as const;
+
+/**
+ * Relative piece diameters. A real janggi set is not uniform — the 궁 is the
+ * largest disc on the board and the 졸/병 the smallest — and that size ladder
+ * happens to double as a read on which pieces matter.
+ */
+const JANGGI_SCALE: Record<string, number> = {
+  k: 1.0,  // 궁
+  r: 0.92, // 차
+  c: 0.89, // 포
+  h: 0.85, // 마
+  e: 0.85, // 상
+  a: 0.79, // 사
+  s: 0.72, // 졸 / 병
+};
 function janggiView(): BoardView<JanggiState, JanggiMove> {
   const W = JANGGI_W, H = JANGGI_H;
   let sel: [number, number] | null = null;
@@ -193,11 +273,24 @@ function janggiView(): BoardView<JanggiState, JanggiMove> {
         if (dests.includes(y * W + x)) { ctx.fillStyle = HINT; ctx.beginPath(); ctx.arc(gx(x, csx), gy(y, csy), cs * 0.16, 0, Math.PI * 2); ctx.fill(); }
         const p = s.board[y * W + x];
         if (!p) continue;
-        const r = cs * 0.46;
+        const r = cs * 0.46 * (JANGGI_SCALE[p.t] ?? 1);
         const isB = p.c === "b";
+        const side = JANGGI_SIDE[isB ? "b" : "w"];
         const px_ = gx(x, csx), py_ = gy(y, csy);
-        if (!sprite(ctx, `janggi/${p.c}${p.t}`, px_, py_, r)) {
-          disc(ctx, px_, py_, r * 0.87, isB ? "#1c3f6e" : "#7a2424");
+
+        // Thin rim in the side's own colour. It reinforces the wash rather than
+        // carrying the distinction on its own, so it stays quiet.
+        ctx.beginPath();
+        ctx.arc(px_, py_, r * 0.97, 0, Math.PI * 2);
+        ctx.strokeStyle = side.rim;
+        ctx.lineWidth = Math.max(1.5, r * 0.08);
+        ctx.stroke();
+
+        const tinted = tintedSprite(`janggi/${p.c}${p.t}`, side.wash);
+        if (tinted) {
+          ctx.drawImage(tinted, px_ - r, py_ - r, r * 2, r * 2);
+        } else {
+          disc(ctx, px_, py_, r * 0.87, side.ink);
           ctx.fillStyle = isB ? "#cfe0ff" : "#ffd9d9";
           ctx.font = `700 ${Math.floor(r * 0.95)}px "Gowun Batang", serif`;
           ctx.textAlign = "center"; ctx.textBaseline = "middle";
@@ -216,7 +309,7 @@ function janggiView(): BoardView<JanggiState, JanggiMove> {
       }
       return taken.length ? taken.join(" ") : "no captures";
     },
-    swatch: (player) => (player === "b" ? "#1c3f6e" : "#7a2424"),
+    swatch: (player) => JANGGI_SIDE[player === "b" ? "b" : "w"].dot,
     click(s, cx, cy, px) {
       const csx = px / W, csy = px / H;
       const x = Math.max(0, Math.min(W - 1, Math.round(cx / csx - 0.5)));

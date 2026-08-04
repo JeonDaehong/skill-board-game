@@ -1,5 +1,6 @@
 import { el, type AppContext } from "../router.js";
 import { icon } from "../ui/art.js";
+import { formatCoins, getCoins } from "../economy.js";
 
 /**
  * Persistent top HUD bar (game-launcher style): brand mark on the left,
@@ -17,7 +18,7 @@ export function topHud(ctx: AppContext): HTMLElement {
 
   const currency = el("button", { class: "hud-chip currency" }, [
     icon("coin", "coin"),
-    el("span", { class: "hud-amount", text: "0" }),
+    el("span", { class: "hud-amount", text: formatCoins(getCoins()) }),
   ]);
   currency.onclick = () => void import("./shop.js").then((m) => ctx.navigate(m.shopScreen));
 

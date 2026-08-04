@@ -15,12 +15,20 @@ import { el, type AppContext, type Screen } from "../router.js";
 import { BoardRenderer, preloadPieces, type RenderOptions } from "../render.js";
 import { skillById } from "../skills.js";
 import { createLocalSession, type Session } from "./session.js";
+import type { SearchOptions } from "./ai.js";
 import { menuScreen } from "../screens/menu.js";
+import {
+  createClock, formatClock, getTimeControlId, isUntimed, timeControlById,
+  type Clock, type TimeControl,
+} from "../clock.js";
 import { gameName, skillName, t, tPassthrough } from "../i18n.js";
 
 export interface ChessOptions {
   humanColor: Color;
-  depth: number;
+  /** Search budget for the AI, taken from the chosen difficulty rung. */
+  search: SearchOptions;
+  /** Clock for the match. Defaults to the player's saved choice. */
+  timeControl?: TimeControl;
 }
 
 /** Single-player entry: build a local session, then mount the shared game view.
@@ -31,9 +39,10 @@ export function makeChess(opts: ChessOptions): Screen {
       humanColor: opts.humanColor,
       humanDeck: [],
       aiDeck: [],
-      depth: opts.depth,
+      search: opts.search,
     });
-    return mountGame(ctx, session, () => ctx.navigate(menuScreen));
+    const control = opts.timeControl ?? timeControlById(getTimeControlId());
+    return mountGame(ctx, session, () => ctx.navigate(menuScreen), control);
   };
 }
 
@@ -59,7 +68,12 @@ const TITAN_DIRS: [number, number][] = [
  * session's MatchState and turns clicks into Actions. Works identically for a
  * local AI session and an online (server) session.
  */
-export function mountGame(ctx: AppContext, session: Session, onExit: () => void): () => void {
+export function mountGame(
+  ctx: AppContext,
+  session: Session,
+  onExit: () => void,
+  control: TimeControl = timeControlById(getTimeControlId()),
+): () => void {
   const me = session.myColor;
   const opp = opposite(me);
   const flipped = me === "b";
@@ -90,6 +104,17 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
   ]);
   const toast = el("div", { class: "toast hidden" });
 
+  // Clocks bracket the board, opponent above and you below, the way a real
+  // clock sits between two players.
+  const timed = !isUntimed(control);
+  const oppClock = el("div", { class: "clock-face" });
+  const myClock = el("div", { class: "clock-face" });
+  const clockRow = (who: "me" | "opp", face: HTMLElement) =>
+    el("div", { class: `clock-row ${who}` }, [
+      el("span", { class: "clock-who", text: who === "me" ? t("game.you") : t("game.opponent") }),
+      face,
+    ]);
+
   ctx.root.appendChild(
     el("div", { class: "screen chess-screen" }, [
       el("div", { class: "game-topbar" }, [
@@ -98,13 +123,17 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
         el("div", { class: "icon-btn", text: me === "w" ? t("game.white") : t("game.black") }),
       ]),
       oppStrip,
+      timed ? clockRow("opp", oppClock) : null,
       statusEl,
       el("div", { class: "board-wrap" }, [canvas, overlay]),
+      timed ? clockRow("me", myClock) : null,
       sacrificeBar,
       skillBar,
       toast,
     ]),
   );
+
+  const clock: Clock = createClock(control);
 
   const renderer = new BoardRenderer(canvas);
 
@@ -140,7 +169,7 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
     renderStatus();
     renderSkillBar();
     renderOppStrip();
-    if (s.status === "ended") { scheduleGameOver(); return; }
+    if (s.status === "ended") { clock.stop(); renderClocks(); scheduleGameOver(); return; }
     if (overlayTimer) { clearTimeout(overlayTimer); overlayTimer = undefined; }
     if (gameOverUp && !opponentLeft) {
       // A rematch started: tear down the game-over card and reset its state.
@@ -149,7 +178,38 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
       opponentLeft = false;
       overlay.classList.add("hidden");
       overlay.replaceChildren();
+      clock.reset();
     }
+    syncClock();
+  }
+
+  // ── clocks ─────────────────────────────────────────────────
+  /** Park the running clock on whoever the engine is waiting for. Idempotent,
+   *  so it can ride along with every repaint. */
+  function syncClock(): void {
+    if (!timed) return;
+    const server = session.clocks();
+    if (server) clock.sync(server.w, server.b);
+    clock.switchTo(actor());
+    renderClocks();
+  }
+
+  function renderClocks(): void {
+    if (!timed) return;
+    paintFace(myClock, me);
+    paintFace(oppClock, opp);
+  }
+
+  function paintFace(node: HTMLElement, who: Color): void {
+    const side = clock.read(who);
+    // In byoyomi the period is the number that matters — the main clock is
+    // already at zero and showing it would read as "you have lost".
+    const inByoyomi = side.byoyomiMs !== null;
+    const ms = inByoyomi ? side.byoyomiMs! : side.mainMs;
+    node.textContent = formatClock(ms);
+    node.classList.toggle("running", clock.running() === who);
+    node.classList.toggle("low", ms <= 10_000);
+    node.classList.toggle("byoyomi", inByoyomi);
   }
 
   function renderStatus(): void {
@@ -548,9 +608,21 @@ export function mountGame(ctx: AppContext, session: Session, onExit: () => void)
     handleClick(renderer.squareFromPixel(x, y, flipped));
   });
 
+  clock.onTick(renderClocks);
+  clock.onFlag(() => {
+    renderClocks();
+    // Only the clock's owner may call the flag. Online matches are timed by
+    // the server, which will send down the ended state on its own reading.
+    if (session.ownsClock && state().status === "playing") session.dispatch({ type: "flag" });
+  });
+
   render();
   // Sprites may still be decoding on a cold load; repaint once they land.
   void preloadPieces().then(render);
 
-  return () => { if (overlayTimer) clearTimeout(overlayTimer); session.dispose(); };
+  return () => {
+    if (overlayTimer) clearTimeout(overlayTimer);
+    clock.dispose();
+    session.dispose();
+  };
 }
