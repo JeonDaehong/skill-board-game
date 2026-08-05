@@ -555,7 +555,9 @@ button { font-family: inherit; }
 @keyframes pop { 0% { transform: scale(0.3); opacity: 0; } 40% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
 
 /* ── Board game view ─────────────────────────────────────── */
-.chess-screen { justify-content: flex-start; gap: 14px; padding-top: 18px; }
+/* Layout lives in the "fitting the match on one screen" block further down,
+   which sizes the board off whatever the rest of the column leaves. */
+.chess-screen { justify-content: flex-start; }
 .game-topbar { display: flex; align-items: center; justify-content: space-between; width: min(94vw, 640px); }
 .game-heading { font-family: var(--display); font-size: 1.3rem; font-weight: 700; color: var(--gold-lt); display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .opp-skill-count { font-size: 0.72rem; font-weight: 500; color: var(--muted); }
@@ -1146,11 +1148,66 @@ button { font-family: inherit; }
 /* A passive the opponent has in play, in the strip above the board. */
 .opp-card.lasting { background: #24331d; border-color: #4c6032; color: #cfe6a8; }
 
-/* Cards add four rows under the board, so in those modes the board is bounded
-   by the viewport height as well as its width — otherwise the hand falls off
-   the bottom of the screen. Classic keeps the full-size board. */
-.chess-screen { overflow-y: auto; }
-.chess-screen:has(.hand-rail:not(.hidden)) .board-wrap { width: min(94vw, 640px, 46vh); }
+/* ── Fitting the match on one screen ──────────────────────────
+   The card modes stack a lot under the board — resources, phases, prompts, the
+   hand — and a game you have to scroll is a game you cannot read. So the screen
+   is a fixed-height column and the board takes whatever is left over, rather
+   than the board having a size and everything else hoping to fit. */
+.chess-screen {
+  height: 100vh;
+  overflow: hidden;
+  gap: 8px;
+  padding: 8px 16px 10px;
+}
+.chess-screen .board-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: auto;
+  /* Square, and never wider than the column or bigger than its art. */
+  aspect-ratio: 1 / 1;
+  max-width: min(94vw, 640px);
+  max-height: min(94vw, 640px);
+  align-self: center;
+}
+.chess-screen .board-canvas { width: 100%; height: 100%; }
+/* These rows are informative, not interactive: they give up space first. */
+.chess-screen .action-log { flex: 0 0 auto; max-height: 120px; overflow: hidden; }
+.chess-screen .opp-strip.hidden { display: none; }
+.chess-screen .clock-row { padding: 2px 4px; }
+.chess-screen .game-topbar { justify-content: flex-start; }
+
+/* ── Turn banner ──────────────────────────────────────────────
+   Shown for a beat when the turn changes, then gone. */
+.turn-banner {
+  position: absolute; inset: 0; z-index: 11;
+  display: grid; place-items: center;
+  pointer-events: none;
+}
+.turn-banner.hidden { display: none; }
+.turn-text {
+  font-family: var(--display);
+  font-size: clamp(1.6rem, 5vw, 2.6rem);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 10px 30px;
+  border-radius: var(--r);
+  background: linear-gradient(180deg, rgba(30, 20, 12, 0.88), rgba(14, 9, 6, 0.8));
+  border: 1px solid var(--gold-dk);
+  animation: turn-in 1.2s ease both;
+}
+.turn-text.mine { color: var(--gold-lt); text-shadow: 0 0 24px rgba(216, 180, 90, 0.6); }
+.turn-text.theirs { color: #e5b6a6; border-color: #6d3527; text-shadow: 0 0 24px rgba(200, 90, 60, 0.5); }
+@keyframes turn-in {
+  0% { opacity: 0; transform: scale(0.86); }
+  16% { opacity: 1; transform: scale(1); }
+  62% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.04); }
+}
+
+/* Leaving mid-match forfeits it, so the confirm button is coloured like it. */
+.start-btn.danger { color: #ffd9cd; border-color: #8d3a2a; background: linear-gradient(180deg, #5a2318, #3a1710); }
+.start-btn.danger:hover { border-color: var(--danger); box-shadow: 0 0 18px rgba(200, 70, 40, 0.45); }
+.leave-card .overlay-why { color: var(--danger); font-style: normal; }
 
 /* ── The action feed ──────────────────────────────────────────
    Cards resolve in a single reducer step, so without a running commentary the

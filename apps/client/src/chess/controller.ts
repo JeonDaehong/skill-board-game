@@ -38,7 +38,7 @@ import {
   createClock, formatClock, getTimeControlId, isUntimed, timeControlById,
   type Clock, type TimeControl,
 } from "../clock.js";
-import { cardName, gameName, modeName, t, tPassthrough } from "../i18n.js";
+import { cardName, t, tPassthrough } from "../i18n.js";
 
 export interface ChessOptions {
   mode: GameMode;
@@ -126,6 +126,10 @@ export function mountGame(
   // card game nobody can follow.
   const actionLog = el("div", { class: "action-log" });
   const playFlash = el("div", { class: "play-flash hidden" });
+  // Whose turn it is, announced over the board and then gone. A line of text
+  // that is always on screen stops being read; a card that appears when the
+  // turn changes is read every time.
+  const turnBanner = el("div", { class: "turn-banner hidden" });
 
   // Clocks bracket the board, opponent above and you below, the way a real
   // clock sits between two players.
@@ -140,18 +144,14 @@ export function mountGame(
 
   ctx.root.appendChild(
     el("div", { class: "screen chess-screen" }, [
+      // The board says which game this is; the top bar only needs the way out.
       el("div", { class: "game-topbar" }, [
-        el("button", { class: "back-btn", text: t("common.leave"), onclick: onExit }),
-        el("div", { class: "game-heading" }, [
-          el("span", { text: gameName("chess") }),
-          el("span", { class: "game-mode-chip", text: modeName(state().mode) }),
-        ]),
-        el("div", { class: "icon-btn", text: me === "w" ? t("game.white") : t("game.black") }),
+        el("button", { class: "back-btn btn-small", text: t("common.leave"), onclick: () => tryLeave() }),
       ]),
       oppStrip,
       timed ? clockRow("opp", oppClock) : null,
       statusEl,
-      el("div", { class: "board-wrap" }, [canvas, overlay, playFlash]),
+      el("div", { class: "board-wrap" }, [canvas, overlay, playFlash, turnBanner]),
       actionLog,
       timed ? clockRow("me", myClock) : null,
       resourceBar,
@@ -206,6 +206,7 @@ export function mountGame(
     rOpts.marks = boardMarks();
 
     renderer.render(s.chess, rOpts);
+    announceTurn();
     sacrificeBar.classList.toggle("hidden", pending?.kind !== "free-moves");
     renderStatus();
     renderResources();
@@ -331,15 +332,15 @@ export function mountGame(
         : t("game.oppTurn");
       return;
     }
-    if (!myTurn()) {
-      statusEl.textContent = t("game.oppTurn");
-      return;
-    }
-    if (s.moveSpent && s.phase === "move") {
+    if (s.moveSpent && s.phase === "move" && myTurn()) {
       statusEl.textContent = t("play.moveSpent");
       return;
     }
-    statusEl.textContent = t("game.yourTurn");
+    // Whose turn it is is announced by the banner and, when there are clocks,
+    // by which clock is lit. Repeating it here permanently only adds a line of
+    // text nobody reads — so the status line goes quiet unless it has something
+    // to ask for, or there is no clock to say it instead.
+    statusEl.textContent = timed ? "" : myTurn() ? t("game.yourTurn") : t("game.oppTurn");
   }
 
   /** Cost pips, deck count and discard count — the numbers behind the hand. */
@@ -658,6 +659,8 @@ export function mountGame(
 
   function renderOppStrip(): void {
     const s = state();
+    // Classic has no hand and no lasting cards, so the strip is dead weight.
+    oppStrip.classList.toggle("hidden", !cards());
     if (!cards()) { oppStrip.replaceChildren(); return; }
     const hand = s.players[opp].hand;
     const revealed = new Set(s.players[me].revealed);
@@ -728,6 +731,40 @@ export function mountGame(
     );
     overlay.classList.remove("hidden");
     gameOverUp = true;
+  }
+
+  /**
+   * Leaving mid-match is a resignation, so it asks first. Once the match is
+   * over — or the opponent has already walked — there is nothing to forfeit and
+   * the button just leaves.
+   */
+  function tryLeave(): void {
+    if (state().status === "ended" || opponentLeft) return onExit();
+
+    overlay.replaceChildren(
+      el("div", { class: "overlay-card leave-card" }, [
+        el("div", { class: "overlay-msg", text: t("game.leaveTitle") }),
+        el("div", { class: "overlay-why", text: t("game.leaveWarn") }),
+        el("div", { class: "overlay-actions" }, [
+          el("button", {
+            class: "back-btn",
+            text: t("common.cancel"),
+            onclick: () => { overlay.classList.add("hidden"); overlay.replaceChildren(); },
+          }),
+          el("button", {
+            class: "start-btn danger",
+            text: t("game.leaveYes"),
+            onclick: () => {
+              // Resign first: the match should end as a loss whether or not the
+              // screen survives long enough to see it.
+              session.dispatch({ type: "resign" });
+              onExit();
+            },
+          }),
+        ]),
+      ]),
+    );
+    overlay.classList.remove("hidden");
   }
 
   /** Opponent quit before the match ended — there's no result to show. */
@@ -904,7 +941,7 @@ export function mountGame(
 
   // ── the action feed ────────────────────────────────────────
   /** How many lines of history the feed keeps on screen. */
-  const LOG_LINES = 5;
+  const LOG_LINES = 4;
   let flashTimer: number | undefined;
 
   /**
@@ -946,6 +983,35 @@ export function mountGame(
 
     actionLog.appendChild(el("div", { class: `log-line ${cls}`, text }));
     while (actionLog.childElementCount > LOG_LINES) actionLog.firstElementChild?.remove();
+  }
+
+  /**
+   * Announce a turn change once, over the board. `lastActor` is what makes it
+   * fire on the change rather than on every repaint — a match repaints many
+   * times per turn, for the clock alone.
+   */
+  let lastActor: Color | null = null;
+  let bannerTimer: number | undefined;
+
+  function announceTurn(): void {
+    const s = state();
+    if (s.status !== "playing") { lastActor = null; return; }
+    const who = actor();
+    if (who === lastActor) return;
+    lastActor = who;
+
+    turnBanner.replaceChildren(
+      el("span", {
+        class: `turn-text ${who === me ? "mine" : "theirs"}`,
+        text: who === me ? t("game.turnMine") : t("game.turnTheirs"),
+      }),
+    );
+    turnBanner.classList.remove("hidden");
+    if (bannerTimer) clearTimeout(bannerTimer);
+    bannerTimer = window.setTimeout(() => {
+      turnBanner.classList.add("hidden");
+      turnBanner.replaceChildren();
+    }, 1200);
   }
 
   /** The played card, big, over the board for a moment. */
