@@ -7,7 +7,8 @@ import {
   type MatchState,
 } from "@skill/engine";
 import type { Color } from "@skill/chess-core";
-import { chooseMove, type SearchOptions } from "./ai.js";
+import { type SearchOptions } from "./ai.js";
+import { createAiRunner } from "./ai-runner.js";
 import { aiCardAction } from "./ai-cards.js";
 
 /**
@@ -63,6 +64,9 @@ export function createLocalSession(cfg: LocalConfig): Session {
   let listener: ((s: MatchState, e: MatchEvent[]) => void) | null = null;
   let disposed = false;
   let timer: number | undefined;
+  // The search runs on its own thread; on the main one it froze the clocks and
+  // every repaint until the AI was done thinking.
+  const ai = createAiRunner();
   // Local play has no opponent to negotiate with, so notices never fire.
 
   function apply(action: Action): boolean {
@@ -106,14 +110,19 @@ export function createLocalSession(cfg: LocalConfig): Session {
       const fooled = state.players[cfg.humanColor].lasting.some((l) => l.card === "hallucination");
       const disguise = fooled ? cfg.humanColor : undefined;
       const forbidden = state.players[aiColor].locked[0];
-      const move = chooseMove(state.chess, cfg.search, state.rules, forbidden, disguise);
-      if (move) {
-        apply({ type: "move", from: move.from, to: move.to, promotion: move.promotion });
-      } else if (state.moveSpent || state.phase !== "move") {
-        // Nothing to move (or the move was spent on a card): hand the turn over
-        // rather than sitting on it forever.
-        apply({ type: "end-turn" });
-      }
+      const thinkingFrom = state;
+      void ai.search(state.chess, cfg.search, state.rules, forbidden, disguise).then((move) => {
+        // The search took real time; the match may have been torn down, or the
+        // human may have taken a counter window, while it ran.
+        if (disposed || state !== thinkingFrom || !aiOnTheHook()) return;
+        if (move) {
+          apply({ type: "move", from: move.from, to: move.to, promotion: move.promotion });
+        } else if (state.moveSpent || state.phase !== "move") {
+          // Nothing to move (or the move was spent on a card): hand the turn
+          // over rather than sitting on it forever.
+          apply({ type: "end-turn" });
+        }
+      });
     }, delay);
   }
 
@@ -139,6 +148,7 @@ export function createLocalSession(cfg: LocalConfig): Session {
     dispose: () => {
       disposed = true;
       if (timer) clearTimeout(timer);
+      ai.dispose();
     },
   };
 }
