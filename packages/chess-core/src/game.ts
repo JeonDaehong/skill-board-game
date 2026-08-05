@@ -32,7 +32,11 @@ function isInsufficientMaterial(state: GameState): boolean {
 
 /** Compute the status of a position for the side to move. */
 export function getStatus(state: GameState, rules?: SkillRules): GameStatus {
-  if (isInsufficientMaterial(state)) return "draw-insufficient-material";
+  // In master mode a bare board is not a dead position — either side can still
+  // summon a queen out of its deck — so the material draw is switched off.
+  if (!rules?.summonable && isInsufficientMaterial(state)) {
+    return "draw-insufficient-material";
+  }
 
   const legal = generateLegalMoves(state, undefined, rules);
   const inCheck = isInCheck(state, state.turn, rules);

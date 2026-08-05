@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { initialState, parseFen, toFen, START_FEN, algebraicToSquare } from "./board.js";
+import {
+  MASTER_DIMS,
+  MASTER_START_FEN,
+  START_FEN,
+  algebraicToSquare,
+  initialState,
+  masterInitialState,
+  parseFen,
+  toFen,
+} from "./board.js";
 import { perft } from "./perft.js";
 import { ChessGame, getStatus } from "./game.js";
 import { generateLegalMoves, isInCheck } from "./moves.js";
@@ -8,6 +17,73 @@ import type { SkillRules } from "./types.js";
 describe("FEN round-trip", () => {
   it("parses and re-serializes the start position", () => {
     expect(toFen(initialState())).toBe(START_FEN);
+  });
+});
+
+describe("master mode: the 10x10 board", () => {
+  const sq = (alg: string) => algebraicToSquare(alg, MASTER_DIMS);
+
+  it("round-trips a 10-wide FEN, including whole-rank skips", () => {
+    expect(toFen(masterInitialState())).toBe(MASTER_START_FEN);
+  });
+
+  it("reads its own width and height off the placement field", () => {
+    const s = masterInitialState();
+    expect(s.width).toBe(10);
+    expect(s.height).toBe(10);
+    expect(s.board).toHaveLength(100);
+  });
+
+  it("opens with a king and two pawns a side", () => {
+    const s = masterInitialState();
+    expect(s.board[sq("e1")]).toEqual({ color: "w", type: "k" });
+    expect(s.board[sq("d2")]).toEqual({ color: "w", type: "p" });
+    expect(s.board[sq("f2")]).toEqual({ color: "w", type: "p" });
+    expect(s.board[sq("e10")]).toEqual({ color: "b", type: "k" });
+    expect(s.board[sq("d9")]).toEqual({ color: "b", type: "p" });
+    expect(s.board[sq("f9")]).toEqual({ color: "b", type: "p" });
+    expect(s.board.filter(Boolean)).toHaveLength(6);
+  });
+
+  it("gives each side 3 king moves + 2 pawn steps + 2 double pushes", () => {
+    // The king has 5 neighbours on the back rank, two of them behind pawns...
+    // d2/f2 are occupied, leaving d1, f1, e2. Each pawn pushes one or two.
+    expect(generateLegalMoves(masterInitialState())).toHaveLength(7);
+  });
+
+  it("lets a pawn double-push off its home rank and no further up", () => {
+    const s = masterInitialState();
+    const targets = generateLegalMoves(s, sq("d2")).map((m) => m.to);
+    expect(targets).toContain(sq("d3"));
+    expect(targets).toContain(sq("d4"));
+    expect(targets).not.toContain(sq("d5"));
+  });
+
+  it("promotes on rank 10, not rank 8", () => {
+    const s = parseFen("4k5/2P7/10/10/10/10/10/10/10/4K5 w - - 0 1");
+    const fromC9 = generateLegalMoves(s, sq("c9"));
+    // c9 -> c10 is a promotion, so it expands into four moves.
+    expect(fromC9).toHaveLength(4);
+    expect(fromC9.every((m) => m.to === sq("c10") && !!m.promotion)).toBe(true);
+  });
+
+  it("has no castling: a bare king cannot jump two files", () => {
+    const s = parseFen("4k5/10/10/10/10/10/10/10/10/R3K5 w KQkq - 0 1");
+    const targets = generateLegalMoves(s, sq("e1")).map((m) => m.to);
+    expect(targets).not.toContain(sq("c1"));
+    expect(targets).not.toContain(sq("g1"));
+  });
+
+  it("detects check across the wider board", () => {
+    // Black rook on j1 rakes the whole back rank into the white king on e1.
+    const s = parseFen("4k5/10/10/10/10/10/10/10/10/4K4r w - - 0 1");
+    expect(isInCheck(s, "w")).toBe(true);
+  });
+
+  it("calls K-vs-K a draw normally, but not when pieces can still be summoned", () => {
+    const s = parseFen("4k5/10/10/10/10/10/10/10/10/4K5 w - - 0 1");
+    expect(getStatus(s)).toBe("draw-insufficient-material");
+    expect(getStatus(s, { summonable: true })).toBe("playing");
   });
 });
 

@@ -9,6 +9,7 @@ import {
 } from "./board.js";
 import type {
   Color,
+  Dims,
   GameState,
   Move,
   MoveFlag,
@@ -16,6 +17,7 @@ import type {
   PieceType,
   SkillRules,
   Square,
+  SquareRule,
 } from "./types.js";
 
 const KNIGHT_DELTAS: ReadonlyArray<[number, number]> = [
@@ -59,6 +61,35 @@ function isProtected(rules: SkillRules | undefined, sq: Square): boolean {
   return rules?.protected?.includes(sq) ?? false;
 }
 
+/** What a card has done to the piece on `sq`, if anything. */
+function squareRule(rules: SkillRules | undefined, sq: Square): SquareRule | undefined {
+  return rules?.squareRules?.[sq];
+}
+
+/** Whether the piece on `from` is allowed to capture whatever sits on `to`. */
+function mayCapture(rule: SquareRule | undefined, to: Square): boolean {
+  if (!rule) return true;
+  if (rule.noCapture) return false;
+  return !rule.noCaptureOn?.includes(to);
+}
+
+/**
+ * A knight that has lost its jump turns through one orthogonal square — the
+ * long leg of the L, as in Janggi — and is blocked if a piece stands there.
+ */
+function knightPathBlocked(
+  board: (Piece | null)[],
+  f: number,
+  r: number,
+  df: number,
+  dr: number,
+  dims: Dims,
+): boolean {
+  const [sf, sr] = Math.abs(df) > Math.abs(dr) ? [Math.sign(df), 0] : [0, Math.sign(dr)];
+  if (!onBoard(f + sf, r + sr, dims)) return true;
+  return board[makeSquare(f + sf, r + sr, dims)] !== null;
+}
+
 /** Agile Knight extra jumps, per color (net (±2, +3) toward the enemy). */
 function agileKnightDeltas(color: Color): ReadonlyArray<[number, number]> {
   return color === "w"
@@ -77,33 +108,34 @@ export function isSquareAttacked(
   board: (Piece | null)[],
   sq: Square,
   byColor: Color,
+  dims: Dims,
   rules?: SkillRules,
 ): boolean {
-  const f = fileOf(sq);
-  const r = rankOf(sq);
+  const f = fileOf(sq, dims);
+  const r = rankOf(sq, dims);
 
   // Pawn attacks: a byColor pawn attacks diagonally "forward".
   // White pawns move toward higher ranks, so a white pawn attacking `sq`
   // sits one rank below it.
   const pawnRank = byColor === "w" ? r - 1 : r + 1;
   for (const df of [-1, 1]) {
-    if (onBoard(f + df, pawnRank)) {
-      const p = board[makeSquare(f + df, pawnRank)];
+    if (onBoard(f + df, pawnRank, dims)) {
+      const p = board[makeSquare(f + df, pawnRank, dims)];
       if (p && p.color === byColor && p.type === "p") return true;
     }
   }
 
   // Peasant Revolt: byColor pawns also threaten the square straight ahead of them,
   // so a pawn one rank "behind" `sq` (toward its own side) attacks it.
-  if (rules?.peasantRevolt?.[byColor] && onBoard(f, pawnRank)) {
-    const p = board[makeSquare(f, pawnRank)];
+  if (rules?.peasantRevolt?.[byColor] && onBoard(f, pawnRank, dims)) {
+    const p = board[makeSquare(f, pawnRank, dims)];
     if (p && p.color === byColor && p.type === "p") return true;
   }
 
   // Knight attacks.
   for (const [df, dr] of KNIGHT_DELTAS) {
-    if (onBoard(f + df, r + dr)) {
-      const p = board[makeSquare(f + df, r + dr)];
+    if (onBoard(f + df, r + dr, dims)) {
+      const p = board[makeSquare(f + df, r + dr, dims)];
       if (p && p.color === byColor && p.type === "n") return true;
     }
   }
@@ -112,8 +144,8 @@ export function isSquareAttacked(
   // attacking `sq` sits at `sq - delta`.
   if (rules?.agileKnight?.[byColor]) {
     for (const [df, dr] of agileKnightDeltas(byColor)) {
-      if (onBoard(f - df, r - dr)) {
-        const p = board[makeSquare(f - df, r - dr)];
+      if (onBoard(f - df, r - dr, dims)) {
+        const p = board[makeSquare(f - df, r - dr, dims)];
         if (p && p.color === byColor && p.type === "n") return true;
       }
     }
@@ -121,8 +153,8 @@ export function isSquareAttacked(
 
   // King attacks (adjacent).
   for (const [df, dr] of KING_DELTAS) {
-    if (onBoard(f + df, r + dr)) {
-      const p = board[makeSquare(f + df, r + dr)];
+    if (onBoard(f + df, r + dr, dims)) {
+      const p = board[makeSquare(f + df, r + dr, dims)];
       if (p && p.color === byColor && p.type === "k") return true;
     }
   }
@@ -132,10 +164,10 @@ export function isSquareAttacked(
   const diagSlider = rules?.chaos ? "r" : "b";
   const orthoSlider = rules?.chaos ? "b" : "r";
   for (const [df, dr] of BISHOP_DIRS) {
-    if (slideHits(board, f, r, df, dr, byColor, diagSlider)) return true;
+    if (slideHits(board, f, r, df, dr, byColor, diagSlider, dims)) return true;
   }
   for (const [df, dr] of ROOK_DIRS) {
-    if (slideHits(board, f, r, df, dr, byColor, orthoSlider)) return true;
+    if (slideHits(board, f, r, df, dr, byColor, orthoSlider, dims)) return true;
   }
 
   return false;
@@ -150,11 +182,12 @@ function slideHits(
   dr: number,
   byColor: Color,
   slider: "b" | "r",
+  dims: Dims,
 ): boolean {
   let nf = f + df;
   let nr = r + dr;
-  while (onBoard(nf, nr)) {
-    const p = board[makeSquare(nf, nr)];
+  while (onBoard(nf, nr, dims)) {
+    const p = board[makeSquare(nf, nr, dims)];
     if (p) {
       if (p.color === byColor && (p.type === slider || p.type === "q")) return true;
       return false;
@@ -169,7 +202,7 @@ function slideHits(
 export function isInCheck(state: GameState, color: Color, rules?: SkillRules): boolean {
   const king = findKing(state.board, color);
   if (king < 0) return false;
-  return isSquareAttacked(state.board, king, opposite(color), rules);
+  return isSquareAttacked(state.board, king, opposite(color), state, rules);
 }
 
 /**
@@ -202,12 +235,21 @@ export function generatePseudoLegalMoves(
   const moves: Move[] = [];
   const { board, turn } = state;
 
-  for (let sq = 0; sq < 64; sq++) {
+  for (let sq = 0; sq < board.length; sq++) {
     if (onlyFrom !== undefined && sq !== onlyFrom) continue;
     const piece = board[sq];
     if (!piece || piece.color !== turn) continue;
 
-    const phantom = !!rules?.phantom?.[piece.color];
+    // Cards can freeze a piece outright, or replace its pattern with a single
+    // step in any direction. Both decide the whole question before type does.
+    const rule = squareRule(rules, sq);
+    if (rule?.immobile) continue;
+    if (rule?.freeStep) {
+      genStep(state, sq, piece, KING_DELTAS, moves, rules);
+      continue;
+    }
+
+    const phantom = !!rules?.phantom?.[piece.color] || !!rule?.mayJump;
     switch (piece.type) {
       case "p":
         genPawn(state, sq, piece, moves, rules);
@@ -244,17 +286,22 @@ function genStep(
   out: Move[],
   rules?: SkillRules,
 ): void {
-  const f = fileOf(from);
-  const r = rankOf(from);
+  const f = fileOf(from, state);
+  const r = rankOf(from, state);
+  const rule = squareRule(rules, from);
   for (const [df, dr] of deltas) {
     const nf = f + df;
     const nr = r + dr;
-    if (!onBoard(nf, nr)) continue;
-    const to = makeSquare(nf, nr);
+    if (!onBoard(nf, nr, state)) continue;
+    // A sandbagged knight has to turn through an empty square to get there.
+    if (rule?.noJump && piece.type === "n" && knightPathBlocked(state.board, f, r, df, dr, state)) {
+      continue;
+    }
+    const to = makeSquare(nf, nr, state);
     const target = state.board[to];
     if (!target) {
       out.push({ from, to, piece, flags: ["normal"] });
-    } else if (target.color !== piece.color && !isProtected(rules, to)) {
+    } else if (target.color !== piece.color && !isProtected(rules, to) && mayCapture(rule, to)) {
       out.push({ from, to, piece, captured: target, flags: ["capture"] });
     }
   }
@@ -269,29 +316,35 @@ function genSlide(
   jumpFriendly = false,
   rules?: SkillRules,
 ): void {
-  const f = fileOf(from);
-  const r = rankOf(from);
+  const f = fileOf(from, state);
+  const r = rankOf(from, state);
+  const rule = squareRule(rules, from);
+  // A sandbag shortens the ray; 도약 lets it pass over anything in the way.
+  const reach = rule?.maxSteps ?? Infinity;
+  const jumpAll = !!rule?.mayJump;
   for (const [df, dr] of dirs) {
     let nf = f + df;
     let nr = r + dr;
-    while (onBoard(nf, nr)) {
-      const to = makeSquare(nf, nr);
+    let steps = 1;
+    while (onBoard(nf, nr, state) && steps <= reach) {
+      const to = makeSquare(nf, nr, state);
       const target = state.board[to];
       if (!target) {
         out.push({ from, to, piece, flags: ["normal"] });
       } else if (target.color !== piece.color) {
         // Protected enemies block the ray but cannot be captured.
-        if (!isProtected(rules, to)) {
+        if (!isProtected(rules, to) && mayCapture(rule, to)) {
           out.push({ from, to, piece, captured: target, flags: ["capture"] });
         }
-        break; // enemies always block
-      } else if (jumpFriendly) {
-        // Phantom: pass over the friendly piece and keep going.
+        if (!jumpAll) break; // enemies otherwise always block
+      } else if (jumpFriendly || jumpAll) {
+        // Phantom / 도약: pass over the piece and keep going.
       } else {
         break; // friendly piece blocks
       }
       nf += df;
       nr += dr;
+      steps++;
     }
   }
 }
@@ -304,24 +357,36 @@ function genPawn(
   rules?: SkillRules,
 ): void {
   const dir = piece.color === "w" ? 1 : -1;
-  const startRank = piece.color === "w" ? 1 : 6;
-  const promoRank = piece.color === "w" ? 7 : 0;
-  const f = fileOf(from);
-  const r = rankOf(from);
+  // The double push comes off the pawn's home rank, which is the second rank
+  // from that side's edge whatever the board's height.
+  const startRank = piece.color === "w" ? 1 : state.height - 2;
+  const promoRank = piece.color === "w" ? state.height - 1 : 0;
+  const f = fileOf(from, state);
+  const r = rankOf(from, state);
   const oneRank = r + dir;
+  const rule = squareRule(rules, from);
+
+  // 도약: the pawn vaults whatever stands in front of it. It still has to land
+  // on an empty square — the leap is over the blocker, not onto it.
+  if (rule?.mayJump) {
+    const twoRank = r + 2 * dir;
+    if (onBoard(f, twoRank, state) && !state.board[makeSquare(f, twoRank, state)]) {
+      out.push({ from, to: makeSquare(f, twoRank, state), piece, flags: ["normal"] });
+    }
+  }
 
   // Single push.
-  if (onBoard(f, oneRank) && !state.board[makeSquare(f, oneRank)]) {
-    const to = makeSquare(f, oneRank);
+  if (onBoard(f, oneRank, state) && !state.board[makeSquare(f, oneRank, state)]) {
+    const to = makeSquare(f, oneRank, state);
     pushPawnMove(from, to, piece, undefined, oneRank === promoRank, out);
 
     // Double push from the starting rank.
     if (r === startRank) {
       const twoRank = r + 2 * dir;
-      if (!state.board[makeSquare(f, twoRank)]) {
+      if (onBoard(f, twoRank, state) && !state.board[makeSquare(f, twoRank, state)]) {
         out.push({
           from,
-          to: makeSquare(f, twoRank),
+          to: makeSquare(f, twoRank, state),
           piece,
           flags: ["double-pawn"],
         });
@@ -330,11 +395,11 @@ function genPawn(
   } else if (
     // Peasant Revolt: capture an enemy piece directly ahead (blocked square).
     rules?.peasantRevolt?.[piece.color] &&
-    onBoard(f, oneRank)
+    onBoard(f, oneRank, state)
   ) {
-    const to = makeSquare(f, oneRank);
+    const to = makeSquare(f, oneRank, state);
     const target = state.board[to];
-    if (target && target.color !== piece.color && !isProtected(rules, to)) {
+    if (target && target.color !== piece.color && !isProtected(rules, to) && mayCapture(rule, to)) {
       pushPawnMove(from, to, piece, target, oneRank === promoRank, out);
     }
   }
@@ -343,14 +408,14 @@ function genPawn(
   for (const df of [-1, 1]) {
     const nf = f + df;
     const nr = r + dir;
-    if (!onBoard(nf, nr)) continue;
-    const to = makeSquare(nf, nr);
+    if (!onBoard(nf, nr, state)) continue;
+    const to = makeSquare(nf, nr, state);
     const target = state.board[to];
-    if (target && target.color !== piece.color && !isProtected(rules, to)) {
+    if (target && target.color !== piece.color && !isProtected(rules, to) && mayCapture(rule, to)) {
       pushPawnMove(from, to, piece, target, nr === promoRank, out);
-    } else if (!target && to === state.enPassant) {
+    } else if (!target && to === state.enPassant && mayCapture(rule, to)) {
       // En passant: the captured pawn sits beside `from`, not on `to`.
-      const capturedSq = makeSquare(nf, r);
+      const capturedSq = makeSquare(nf, r, state);
       if (!isProtected(rules, capturedSq)) {
         const captured = state.board[capturedSq] ?? undefined;
         out.push({
@@ -383,6 +448,11 @@ function pushPawnMove(
   }
 }
 
+/**
+ * Castling exists only on the standard 8x8 setup. Master mode starts with a
+ * bare king and summons its rooks onto arbitrary squares, so there is no home
+ * square for the rule to key off — its castling rights are always empty.
+ */
 function genCastling(
   state: GameState,
   from: Square,
@@ -390,39 +460,40 @@ function genCastling(
   out: Move[],
   rules?: SkillRules,
 ): void {
+  if (state.width !== 8 || state.height !== 8) return;
   const color = piece.color;
   const rank = color === "w" ? 0 : 7;
   // King must be on its home square and not currently in check.
-  if (from !== makeSquare(4, rank)) return;
+  if (from !== makeSquare(4, rank, state)) return;
   const enemy = opposite(color);
-  if (isSquareAttacked(state.board, from, enemy, rules)) return;
+  if (isSquareAttacked(state.board, from, enemy, state, rules)) return;
 
   const rights = state.castling;
   const kingSide = color === "w" ? rights.wK : rights.bK;
   const queenSide = color === "w" ? rights.wQ : rights.bQ;
 
   if (kingSide) {
-    const f5 = makeSquare(5, rank);
-    const f6 = makeSquare(6, rank);
+    const f5 = makeSquare(5, rank, state);
+    const f6 = makeSquare(6, rank, state);
     if (
       !state.board[f5] &&
       !state.board[f6] &&
-      !isSquareAttacked(state.board, f5, enemy, rules) &&
-      !isSquareAttacked(state.board, f6, enemy, rules)
+      !isSquareAttacked(state.board, f5, enemy, state, rules) &&
+      !isSquareAttacked(state.board, f6, enemy, state, rules)
     ) {
       out.push({ from, to: f6, piece, flags: ["castle-king"] });
     }
   }
   if (queenSide) {
-    const f1 = makeSquare(1, rank);
-    const f2 = makeSquare(2, rank);
-    const f3 = makeSquare(3, rank);
+    const f1 = makeSquare(1, rank, state);
+    const f2 = makeSquare(2, rank, state);
+    const f3 = makeSquare(3, rank, state);
     if (
       !state.board[f1] &&
       !state.board[f2] &&
       !state.board[f3] &&
-      !isSquareAttacked(state.board, f2, enemy, rules) &&
-      !isSquareAttacked(state.board, f3, enemy, rules)
+      !isSquareAttacked(state.board, f2, enemy, state, rules) &&
+      !isSquareAttacked(state.board, f3, enemy, state, rules)
     ) {
       out.push({ from, to: f2, piece, flags: ["castle-queen"] });
     }
@@ -437,7 +508,7 @@ export function applyMove(state: GameState, move: Move): GameState {
   const next = cloneState(state);
   const { board } = next;
   const color = move.piece.color;
-  const rank = color === "w" ? 0 : 7;
+  const rank = color === "w" ? 0 : state.height - 1;
 
   board[move.from] = null;
 
@@ -449,24 +520,28 @@ export function applyMove(state: GameState, move: Move): GameState {
 
   // En passant removes the pawn beside the destination.
   if (move.flags.includes("en-passant")) {
-    const capturedSq = makeSquare(fileOf(move.to), rankOf(move.from));
+    const capturedSq = makeSquare(fileOf(move.to, state), rankOf(move.from, state), state);
     board[capturedSq] = null;
   }
 
   // Castling also moves the rook.
   if (move.flags.includes("castle-king")) {
-    board[makeSquare(5, rank)] = board[makeSquare(7, rank)] ?? null;
-    board[makeSquare(7, rank)] = null;
+    board[makeSquare(5, rank, state)] = board[makeSquare(7, rank, state)] ?? null;
+    board[makeSquare(7, rank, state)] = null;
   } else if (move.flags.includes("castle-queen")) {
-    board[makeSquare(3, rank)] = board[makeSquare(0, rank)] ?? null;
-    board[makeSquare(0, rank)] = null;
+    board[makeSquare(3, rank, state)] = board[makeSquare(0, rank, state)] ?? null;
+    board[makeSquare(0, rank, state)] = null;
   }
 
   updateCastlingRights(next, move);
 
   // En passant target: only set right after a double pawn push.
   next.enPassant = move.flags.includes("double-pawn")
-    ? makeSquare(fileOf(move.from), (rankOf(move.from) + rankOf(move.to)) / 2)
+    ? makeSquare(
+        fileOf(move.from, state),
+        (rankOf(move.from, state) + rankOf(move.to, state)) / 2,
+        state,
+      )
     : null;
 
   // Halfmove clock resets on captures and pawn moves.
@@ -495,10 +570,12 @@ function updateCastlingRights(state: GameState, move: Move): void {
   }
 
   // Moving or capturing a rook forfeits that side's right.
-  const a1 = makeSquare(0, 0);
-  const h1 = makeSquare(7, 0);
-  const a8 = makeSquare(0, 7);
-  const h8 = makeSquare(7, 7);
+  const top = state.height - 1;
+  const right = state.width - 1;
+  const a1 = makeSquare(0, 0, state);
+  const h1 = makeSquare(right, 0, state);
+  const a8 = makeSquare(0, top, state);
+  const h8 = makeSquare(right, top, state);
   for (const sq of [move.from, move.to]) {
     if (sq === a1) c.wQ = false;
     else if (sq === h1) c.wK = false;

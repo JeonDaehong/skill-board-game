@@ -10,20 +10,38 @@ import {
   type SkillRules,
   type Square,
 } from "@skill/chess-core";
-import type { MatchState } from "@skill/engine";
+import {
+  cardCost,
+  isPieceCard,
+  modeRules,
+  skillMeta,
+  summonZone,
+  usesCards,
+  type Action,
+  type CounterTrigger,
+  type GameMode,
+  type MatchEvent,
+  type MatchState,
+  type TargetSpec,
+} from "@skill/engine";
 import { el, type AppContext, type Screen } from "../router.js";
 import { BoardRenderer, preloadPieces, type RenderOptions } from "../render.js";
-import { skillById } from "../skills.js";
+import { cardToken, icon, type IconName } from "../ui/art.js";
+import { skillIcon } from "../skills.js";
 import { createLocalSession, type Session } from "./session.js";
+import { draftAiDeck } from "./ai-deck.js";
 import type { SearchOptions } from "./ai.js";
 import { menuScreen } from "../screens/menu.js";
+import { deckForMatch } from "../decks.js";
+import { cardEl, fitNames } from "../ui/card.js";
 import {
   createClock, formatClock, getTimeControlId, isUntimed, timeControlById,
   type Clock, type TimeControl,
 } from "../clock.js";
-import { gameName, skillName, t, tPassthrough } from "../i18n.js";
+import { cardName, gameName, modeName, t, tPassthrough } from "../i18n.js";
 
 export interface ChessOptions {
+  mode: GameMode;
   humanColor: Color;
   /** Search budget for the AI, taken from the chosen difficulty rung. */
   search: SearchOptions;
@@ -31,14 +49,14 @@ export interface ChessOptions {
   timeControl?: TimeControl;
 }
 
-/** Single-player entry: build a local session, then mount the shared game view.
- *  Plain chess for now — no skills (the card-deck system is being reworked). */
+/** Single-player entry: build a local session, then mount the shared game view. */
 export function makeChess(opts: ChessOptions): Screen {
   return (ctx) => {
     const session = createLocalSession({
+      mode: opts.mode,
       humanColor: opts.humanColor,
-      humanDeck: [],
-      aiDeck: [],
+      humanDeck: deckForMatch(opts.mode),
+      aiDeck: draftAiDeck(opts.mode),
       search: opts.search,
     });
     const control = opts.timeControl ?? timeControlById(getTimeControlId());
@@ -49,24 +67,22 @@ export function makeChess(opts: ChessOptions): Screen {
 /** How long the final position stays visible before the result card covers it. */
 const GAME_OVER_DELAY_MS = 1100;
 
-const IMMEDIATE: Record<string, string> = {
-  "one-more": "one-more",
-  cloak: "cloak",
-  liberation: "liberation",
-  undo: "undo",
-  "titan-fusion": "titan-fuse",
+const COUNTER_REASON: Record<CounterTrigger, string> = {
+  move: "counter.trigMove",
+  capture: "counter.trigCapture",
+  skill: "counter.trigSkill",
+  summon: "counter.trigSummon",
+  check: "counter.trigCheck",
+  checkmate: "counter.trigCheckmate",
+  terrain: "counter.trigTerrain",
+  enchant: "counter.trigEnchant",
 };
-const SINGLE_TARGET = new Set(["iron-guard", "evolve-gamble", "revive-gamble"]);
-const SRC_DEST = new Set(["retreat", "cross-diagonal", "raid-march"]);
-
-const TITAN_DIRS: [number, number][] = [
-  [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1],
-];
 
 /**
  * The shared game screen. It never mutates game state directly — it renders the
  * session's MatchState and turns clicks into Actions. Works identically for a
- * local AI session and an online (server) session.
+ * local AI session and an online (server) session, and for all three modes:
+ * the card rail simply does not appear when the mode has no deck.
  */
 export function mountGame(
   ctx: AppContext,
@@ -78,12 +94,11 @@ export function mountGame(
   const opp = opposite(me);
   const flipped = me === "b";
 
-  // Purely local UI state (never leaves the client).
+  // Purely local UI state (never leaves the client). Targeting itself is not
+  // here: the engine owns which card is waiting on what, and this screen only
+  // reads that pending step and turns clicks into `target` actions.
   let selected: Square | null = null;
-  let targeting: { skillId: string; picks: Square[] } | null = null;
-  let foresightPeek = false;
-  let titanSelected = false;
-  let sacSource: Square | null = null;
+  let freeMoveSource: Square | null = null;
   // Game-over / rematch UI state (client-only).
   let gameOverUp = false;
   let rematchPending = false;
@@ -98,11 +113,19 @@ export function mountGame(
   const statusEl = el("div", { class: "game-status" });
   const overlay = el("div", { class: "game-overlay hidden" });
   const oppStrip = el("div", { class: "opp-strip" });
-  const skillBar = el("div", { class: "skill-bar" });
+  const handRail = el("div", { class: "hand-rail" });
+  const resourceBar = el("div", { class: "resource-bar" });
+  const phaseBar = el("div", { class: "phase-bar" });
+  const stepPrompt = el("div", { class: "step-prompt hidden" });
   const sacrificeBar = el("div", { class: "sacrifice-bar hidden" }, [
-    el("button", { class: "start-btn", text: t("game.endTurn"), onclick: () => session.dispatch({ type: "sacrifice-end" }) }),
+    el("button", { class: "start-btn", text: t("game.endTurn"), onclick: () => session.dispatch({ type: "free-move-end" }) }),
   ]);
   const toast = el("div", { class: "toast hidden" });
+  // Everything that happens, said out loud: cards played, pieces summoned,
+  // cards drawn and destroyed. A card game where effects resolve silently is a
+  // card game nobody can follow.
+  const actionLog = el("div", { class: "action-log" });
+  const playFlash = el("div", { class: "play-flash hidden" });
 
   // Clocks bracket the board, opponent above and you below, the way a real
   // clock sits between two players.
@@ -119,26 +142,35 @@ export function mountGame(
     el("div", { class: "screen chess-screen" }, [
       el("div", { class: "game-topbar" }, [
         el("button", { class: "back-btn", text: t("common.leave"), onclick: onExit }),
-        el("div", { class: "game-heading" }, [el("span", { text: gameName("chess") })]),
+        el("div", { class: "game-heading" }, [
+          el("span", { text: gameName("chess") }),
+          el("span", { class: "game-mode-chip", text: modeName(state().mode) }),
+        ]),
         el("div", { class: "icon-btn", text: me === "w" ? t("game.white") : t("game.black") }),
       ]),
       oppStrip,
       timed ? clockRow("opp", oppClock) : null,
       statusEl,
-      el("div", { class: "board-wrap" }, [canvas, overlay]),
+      el("div", { class: "board-wrap" }, [canvas, overlay, playFlash]),
+      actionLog,
       timed ? clockRow("me", myClock) : null,
+      resourceBar,
+      phaseBar,
+      stepPrompt,
       sacrificeBar,
-      skillBar,
+      handRail,
       toast,
     ]),
   );
 
   const clock: Clock = createClock(control);
-
   const renderer = new BoardRenderer(canvas);
 
   function state(): MatchState {
     return session.getState();
+  }
+  function cards(): boolean {
+    return usesCards(state().mode);
   }
   function actor(): Color {
     const s = state();
@@ -147,40 +179,104 @@ export function mountGame(
   function myTurn(): boolean {
     return state().status === "playing" && actor() === me;
   }
+  /** A step is waiting on us specifically — a draw choice, a counter, a drop. */
+  function myStep(): MatchState["pending"] | null {
+    const p = state().pending;
+    return p && p.color === me ? p : null;
+  }
 
   // ── rendering ──────────────────────────────────────────────
   function render(): void {
     const s = state();
+    const pending = myStep();
     let rOpts: RenderOptions;
-    if (s.pending?.kind === "sacrifice" && s.pending.color === me && sacSource !== null) {
-      rOpts = { selected: sacSource, targets: sacrificeDests(sacSource), lastMove: null, flipped };
-    } else if (titanSelected && s.titan) {
-      rOpts = { selected: null, targets: titanReach(s).map((r) => r.anchor), lastMove: null, flipped };
-    } else if (targeting) {
-      rOpts = { selected: targeting.picks[0] ?? null, targets: targetingHighlights(), lastMove: null, flipped };
+
+    if (pending?.kind === "free-moves" && freeMoveSource !== null) {
+      rOpts = { selected: freeMoveSource, targets: quietDests(freeMoveSource), lastMove: null, flipped };
+    } else if (pending?.kind === "summon-place") {
+      rOpts = { selected: null, targets: [], lastMove: null, flipped, zone: summonZone(s, me) };
+    } else if (pending?.kind === "targeting") {
+      rOpts = { selected: pickedSquares(pending)[0] ?? null, targets: targetSquares(pending), lastMove: null, flipped };
     } else if (selected !== null) {
       rOpts = { selected, targets: legalTargets(selected), lastMove: null, flipped };
     } else {
       rOpts = { selected: null, targets: [], lastMove: null, flipped };
     }
-    rOpts.titan = s.titan ? { cells: s.titan.cells, hp: s.titan.hp } : null;
+    rOpts.stuck = stuckSquares();
+    rOpts.marks = boardMarks();
+
     renderer.render(s.chess, rOpts);
-    sacrificeBar.classList.toggle("hidden", !(s.pending?.kind === "sacrifice" && s.pending.color === me));
+    sacrificeBar.classList.toggle("hidden", pending?.kind !== "free-moves");
     renderStatus();
-    renderSkillBar();
+    renderResources();
+    renderPhases();
+    renderStepPrompt();
+    renderHand();
     renderOppStrip();
+
     if (s.status === "ended") { clock.stop(); renderClocks(); scheduleGameOver(); return; }
     if (overlayTimer) { clearTimeout(overlayTimer); overlayTimer = undefined; }
     if (gameOverUp && !opponentLeft) {
       // A rematch started: tear down the game-over card and reset its state.
       gameOverUp = false;
       rematchPending = false;
-      opponentLeft = false;
       overlay.classList.add("hidden");
       overlay.replaceChildren();
       clock.reset();
     }
     syncClock();
+  }
+
+  /**
+   * Enchants and terrain, as badges on the squares they sit on. An enchant that
+   * the board does not show is a rule the player cannot see, so every one gets a
+   * glyph — green when it is working for you, red when it is working on you.
+   */
+  function boardMarks(): NonNullable<RenderOptions["marks"]> {
+    const s = state();
+    const out: NonNullable<RenderOptions["marks"]> = [];
+    for (const e of s.enchants) {
+      if (e.on.kind === "player") continue;
+      // A buried mine belongs to whoever laid it; the other side gets no hint.
+      if (e.card === "mine" && e.owner !== me) continue;
+      out.push({
+        sq: e.on.sq,
+        glyph: skillIcon(e.card),
+        token: cardToken(e.card),
+        tone: e.owner === me ? "good" : "bad",
+      });
+    }
+    for (const color of [me, opp] as Color[]) {
+      for (const l of s.players[color].lasting) {
+        if (l.sq === undefined) continue;
+        out.push({
+          sq: l.sq,
+          glyph: skillIcon(l.card),
+          token: cardToken(l.card),
+          tone: color === me ? "good" : "bad",
+        });
+      }
+    }
+    return out;
+  }
+
+  /** Our own pieces that cannot move right now, so the board can say so. */
+  function stuckSquares(): Square[] {
+    const s = state();
+    const out = new Set<Square>(s.players[me].summonSick);
+    for (const [sq, rule] of Object.entries(s.rules.squareRules ?? {})) {
+      if (!rule.immobile) continue;
+      const n = Number(sq);
+      if (s.chess.board[n]?.color === me) out.add(n);
+    }
+    return [...out];
+  }
+
+  function emptySquares(): Square[] {
+    const board = state().chess.board;
+    const out: Square[] = [];
+    for (let sq = 0; sq < board.length; sq++) if (!board[sq]) out.push(sq);
+    return out;
   }
 
   // ── clocks ─────────────────────────────────────────────────
@@ -215,82 +311,378 @@ export function mountGame(
   function renderStatus(): void {
     const s = state();
     if (s.status === "ended") return;
-    if (s.titan && s.chess.turn === s.titan.owner && s.titan.owner === me) {
-      statusEl.textContent = `Titan (HP ${s.titan.hp})`;
-      return;
-    }
-    if (s.pending && s.pending.color === me) {
-      const k = s.pending.kind;
+    const pending = myStep();
+    if (pending) {
       statusEl.textContent =
-        k === "sacrifice" ? `Sacrifice: move a piece (${s.pending.movesLeft} left, no captures)`
-        : k === "revive-place" ? "Revive: pick an empty square"
-        : "King's Return: pick a revival square";
+        pending.kind === "free-moves"
+          ? t("play.freeMoves").replace("{n}", String(pending.movesLeft))
+        : pending.kind === "targeting" ? targetPrompt(pending)
+        : pending.kind === "arrange" ? t("play.arrange")
+        : pending.kind === "summon-place" ? t("summon.pick")
+        : pending.kind === "discard" ? t("draw.pick")
+        : pending.kind === "draw-choice" ? t("draw.title")
+        : t("counter.title");
       return;
     }
-    if (foresightPeek) {
-      statusEl.textContent = "Foresight: click an opponent card";
-      return;
-    }
-    if (targeting) {
-      const name = skillName(targeting.skillId);
-      statusEl.textContent = `${name}: pick a target (click empty space to cancel)`;
+    if (state().pending) {
+      // The opponent owes an answer — most visibly, a counter window.
+      statusEl.textContent = state().pending?.kind === "counter"
+        ? t("counter.waiting")
+        : t("game.oppTurn");
       return;
     }
     if (!myTurn()) {
       statusEl.textContent = t("game.oppTurn");
       return;
     }
+    if (s.moveSpent && s.phase === "move") {
+      statusEl.textContent = t("play.moveSpent");
+      return;
+    }
     statusEl.textContent = t("game.yourTurn");
   }
 
-  function renderSkillBar(): void {
-    const deck = state().players[me].deck;
-    if (deck.length === 0) {
-      // Plain game (no cards): hide the bar entirely.
-      skillBar.replaceChildren();
-      skillBar.classList.add("hidden");
+  /** Cost pips, deck count and discard count — the numbers behind the hand. */
+  function renderResources(): void {
+    if (!cards()) {
+      resourceBar.replaceChildren();
+      resourceBar.classList.add("hidden");
       return;
     }
-    skillBar.classList.remove("hidden");
-    const busy = !!targeting || foresightPeek || !!state().pending || !!state().titan;
-    skillBar.replaceChildren(
-      ...deck.map((c) => {
-        const meta = skillById(c.id);
-        let stateText: string, cls: string;
-        if (meta?.type === "passive") { stateText = t("skill.alwaysOn"); cls = "passive"; }
-        else if (c.usesLeft !== null && c.usesLeft <= 0) { stateText = t("skill.spent"); cls = "spent"; }
-        else if (c.cooldownRemaining > 0) { stateText = `CD ${c.cooldownRemaining}`; cls = "cooldown"; }
-        else { stateText = t("skill.ready"); cls = "ready"; }
-        const usable = myTurn() && !busy && meta?.type === "active" && c.cooldownRemaining === 0 && (c.usesLeft === null || c.usesLeft > 0);
-        const chip = el("div", { class: `skill-chip ${cls}${usable ? " usable" : ""}` }, [
-          el("span", { class: "chip-icon", text: meta?.icon ?? "?" }),
-          el("div", { class: "chip-body" }, [
-            el("span", { class: "chip-name", text: skillName(c.id) }),
-            el("span", { class: "chip-state", text: stateText }),
-          ]),
-        ]);
-        if (usable) chip.onclick = () => activateSkill(c.id);
-        return chip;
-      }),
+    resourceBar.classList.remove("hidden");
+    const s = state();
+    const cap = modeRules(s.mode).costCap;
+    const mine = s.players[me];
+    const theirs = s.players[opp];
+
+    const pips = el("div", { class: "cost-pips" },
+      Array.from({ length: cap }, (_, i) =>
+        el("i", { class: i < mine.cost ? "on" : "" }),
+      ),
+    );
+
+    resourceBar.replaceChildren(
+      el("div", { class: "res-group" }, [
+        el("span", { class: "res-label", text: t("play.cost") }),
+        pips,
+        el("span", { class: "res-value", text: `${mine.cost}/${cap}` }),
+      ]),
+      el("div", { class: "res-group" }, [
+        el("span", { class: "res-label", text: t("play.deckLeft") }),
+        el("span", { class: "res-value", text: String(mine.library.length) }),
+      ]),
+      el("div", { class: "res-group" }, [
+        el("span", { class: "res-label", text: t("play.discard") }),
+        el("span", { class: "res-value", text: String(mine.discard.length) }),
+      ]),
+      el("div", { class: "res-group opp" }, [
+        el("span", { class: "res-label", text: t("game.opponent") }),
+        el("span", { class: "res-value", text: `◈${theirs.cost} · ✋${theirs.hand.length}` }),
+      ]),
     );
   }
 
+  /**
+   * The turn's steps, with the current one lit. It doubles as the control for
+   * moving on: the "next step" button advances the phase, and once there is
+   * nothing left to do it ends the turn.
+   */
+  function renderPhases(): void {
+    const s = state();
+    if (!cards() || s.status !== "playing") {
+      phaseBar.replaceChildren();
+      phaseBar.classList.add("hidden");
+      return;
+    }
+    phaseBar.classList.remove("hidden");
+    const steps: { key: MatchState["phase"]; label: string }[] = [
+      { key: "draw", label: t("play.phaseDraw") },
+      ...(modeRules(s.mode).pieceCards ? [{ key: "summon" as const, label: t("play.phaseSummon") }] : []),
+      { key: "skill", label: t("play.phaseSkill") },
+      { key: "move", label: t("play.phaseMove") },
+    ];
+    const mine = myTurn() && !s.pending;
+
+    const chips = steps.map((step) =>
+      el("span", {
+        class: `phase-chip${mine && s.phase === step.key ? " active" : ""}${
+          s.moveSpent && step.key === "move" ? " spent" : ""
+        }`,
+      }, [
+        icon(`phase-${step.key}` as IconName, "phase-icon"),
+        el("span", { text: step.label }),
+      ]),
+    );
+
+    // Passing is only offered while there is a later step to reach; on the move
+    // step the same button becomes "end turn", which is what it actually does.
+    const nodes: HTMLElement[] = [el("div", { class: "phase-chips" }, chips)];
+    if (mine) {
+      nodes.push(
+        s.phase !== "move"
+          ? el("button", { class: "btn btn-ghost btn-small", text: t("play.next"), onclick: () => session.dispatch({ type: "pass-phase" }) })
+          : el("button", { class: "btn btn-ghost btn-small", text: t("game.endTurn"), onclick: () => session.dispatch({ type: "end-turn" }) }),
+      );
+    }
+    phaseBar.replaceChildren(...nodes);
+  }
+
+  /**
+   * The strip for a step that needs an answer off the board: the draw choice, a
+   * counter window, and the parts of targeting a board click cannot express —
+   * a discard pile to fish in, a promotion to choose, a variable step to close.
+   */
+  function renderStepPrompt(): void {
+    const pending = myStep();
+    const kinds = ["draw-choice", "counter", "targeting", "arrange"];
+    if (!pending || !kinds.includes(pending.kind)) {
+      stepPrompt.replaceChildren();
+      stepPrompt.classList.add("hidden");
+      return;
+    }
+    stepPrompt.classList.remove("hidden");
+
+    if (pending.kind === "targeting") return renderTargetPrompt(pending);
+
+    if (pending.kind === "arrange") {
+      // 점술: the looked-at cards go back in the order they are clicked, and the
+      // last one clicked is the one the next draw takes.
+      const order: number[] = [];
+      const row = el("div", { class: "step-cards" });
+      const paint = () => {
+        row.replaceChildren(
+          ...pending.cards.map((id, i) => {
+            const node = cardEl(id, "sm");
+            node.classList.add("hand-card", order.includes(i) ? "blocked" : "playable");
+            const at = order.indexOf(i);
+            if (at >= 0) node.appendChild(el("span", { class: "card-block", text: `#${order.length - at}` }));
+            node.onclick = () => {
+              if (order.includes(i)) return;
+              order.unshift(i); // clicked first = drawn first = on top
+              if (order.length === pending.cards.length) session.dispatch({ type: "arrange", order });
+              else paint();
+            };
+            return node;
+          }),
+        );
+        fitNames(row);
+      };
+      paint();
+      stepPrompt.replaceChildren(
+        el("span", { class: "step-title", text: t("play.arrange") }),
+        row,
+      );
+      return;
+    }
+
+    if (pending.kind === "draw-choice") {
+      stepPrompt.replaceChildren(
+        el("span", { class: "step-title", text: t("draw.title") }),
+        el("span", {
+          class: "step-body",
+          text: t("draw.body").replace("{n}", String(state().players[me].hand.length)),
+        }),
+        el("button", { class: "btn btn-ghost btn-small", text: t("draw.skip"), onclick: () => session.dispatch({ type: "draw-skip" }) }),
+        el("button", { class: "btn btn-primary btn-small", text: t("draw.take"), onclick: () => session.dispatch({ type: "draw-take" }) }),
+      );
+      return;
+    }
+
+    // A counter window: say what is being answered, and let them decline.
+    if (pending.kind !== "counter") return;
+    stepPrompt.replaceChildren(
+      icon("counter-horn", "step-icon"),
+      el("span", { class: "step-title", text: t("counter.title") }),
+      el("span", { class: "step-body", text: t(COUNTER_REASON[pending.trigger] as never) }),
+      el("button", { class: "btn btn-ghost btn-small", text: t("counter.pass"), onclick: () => session.dispatch({ type: "counter-pass" }) }),
+    );
+  }
+
+  /**
+   * What a card is waiting for. Squares are picked on the board; everything
+   * else — a card in a pile, one of a fixed set of answers — is picked here.
+   */
+  function renderTargetPrompt(p: Targeting): void {
+    const spec = currentSpec(p);
+    const nodes: (Node | null)[] = [
+      el("span", { class: "step-title", text: cardName(p.card) }),
+      el("span", { class: "step-body", text: targetPrompt(p) }),
+    ];
+
+    if (spec?.kinds.includes("choice")) {
+      for (const option of spec.options ?? []) {
+        nodes.push(el("button", {
+          class: "btn btn-primary btn-small",
+          text: t(`option.${option}` as never),
+          onclick: () => pick({ type: "target", option }),
+        }));
+      }
+    }
+
+    if (spec?.kinds.includes("discard")) {
+      const pile = state().players[me].discard;
+      const row = el("div", { class: "step-cards" },
+        pile.map((id, i) => {
+          const node = cardEl(id, "sm");
+          node.classList.add("hand-card", "playable");
+          node.onclick = () => pick({ type: "target", index: i });
+          return node;
+        }),
+      );
+      nodes.push(pile.length === 0 ? el("span", { class: "step-body", text: t("play.discardEmpty") }) : row);
+    }
+
+    if (spec?.kinds.includes("lasting")) {
+      for (const color of [me, opp] as Color[]) {
+        for (const l of state().players[color].lasting) {
+          nodes.push(el("button", {
+            class: "btn btn-ghost btn-small",
+            text: `${color === me ? "▲" : "▼"} ${cardName(l.card)}`,
+            onclick: () => pick({ type: "target", index: l.id }),
+          }));
+        }
+      }
+    }
+
+    // A step that takes a range of picks needs a way to say "that is enough".
+    if (spec && spec.max > spec.min) {
+      nodes.push(el("button", {
+        class: "btn btn-primary btn-small",
+        text: t("target.done"),
+        onclick: () => pick({ type: "target-done" }),
+      }));
+    }
+    nodes.push(el("button", {
+      class: "btn btn-ghost btn-small",
+      text: t("common.cancel"),
+      onclick: () => pick({ type: "target-cancel" }),
+    }));
+
+    stepPrompt.replaceChildren(...nodes.filter((n): n is Node => !!n));
+    fitNames(stepPrompt);
+  }
+
+  // ── the hand ───────────────────────────────────────────────
+  /** Why a card in hand cannot be played right now, or null if it can. */
+  function blockedReason(cardId: string, index: number): string | null {
+    const s = state();
+    const p = s.players[me];
+    const pending = myStep();
+
+    // A card being fished for by another card is judged by that card's step,
+    // not by what it would cost to play.
+    if (pending?.kind === "targeting") {
+      return currentSpec(pending)?.kinds.includes("own-hand") ? null : t("play.targeting");
+    }
+    if (p.cost + p.bonusCost < cardCost(cardId, s, me)) return t("play.tooExpensive");
+
+    if (pending?.kind === "counter") {
+      const meta = skillMeta(cardId);
+      if (!meta || meta.speed !== "counter" || meta.trigger !== pending.trigger) {
+        return t("play.counterOnly");
+      }
+      return null;
+    }
+    if (pending?.kind === "discard") return null; // any card may be pitched
+
+    if (!myTurn() || s.pending) return t("game.oppTurn");
+
+    if (isPieceCard(cardId)) {
+      if (!modeRules(s.mode).pieceCards) return t("play.counterOnly");
+      if (s.phase !== "summon") return t("play.phaseSummon");
+      return summonZone(s, me).length === 0 ? t("summon.pick") : null;
+    }
+    const meta = skillMeta(cardId);
+    if (!meta) return t("play.counterOnly");
+    if (meta.speed === "counter") return t("play.counterOnly");
+    if (s.phase !== "summon" && s.phase !== "skill") return t("play.phaseSkill");
+    if (s.skillsPlayed >= 1) return t("play.oneSkill");
+    void index;
+    return null;
+  }
+
+  function renderHand(): void {
+    const s = state();
+    if (!cards()) {
+      handRail.replaceChildren();
+      handRail.classList.add("hidden");
+      return;
+    }
+    handRail.classList.remove("hidden");
+    const hand = s.players[me].hand;
+    const pending = myStep();
+    const discarding = pending?.kind === "discard";
+
+    if (hand.length === 0) {
+      handRail.replaceChildren(el("div", { class: "hand-empty", text: t("play.hand") }));
+      return;
+    }
+
+    handRail.replaceChildren(
+      ...hand.map((cardId, i) => {
+        const blocked = blockedReason(cardId, i);
+        const node = cardEl(cardId, "sm");
+        node.classList.add("hand-card");
+        node.classList.toggle("playable", !blocked);
+        node.classList.toggle("blocked", !!blocked);
+        if (discarding) node.classList.add("pitchable");
+        if (pending?.kind === "targeting" && pending.card === cardId) node.classList.add("casting");
+        if (blocked) node.appendChild(el("span", { class: "card-block", text: blocked }));
+        node.onclick = () => onHandClick(cardId, i);
+        return node;
+      }),
+    );
+    fitNames(handRail);
+  }
+
+  function onHandClick(cardId: string, index: number): void {
+    const pending = myStep();
+    if (pending?.kind === "targeting") {
+      if (currentSpec(pending)?.kinds.includes("own-hand")) pick({ type: "target", index });
+      return;
+    }
+    if (pending?.kind === "discard") {
+      return session.dispatch({ type: "discard", index });
+    }
+    if (pending?.kind === "counter") {
+      if (blockedReason(cardId, index)) return;
+      return session.dispatch({ type: "counter-play", index });
+    }
+    if (blockedReason(cardId, index)) return;
+
+    selected = null;
+    // Every card is played the same way now; whatever it needs to aim at, the
+    // engine asks for next.
+    session.dispatch(isPieceCard(cardId) ? { type: "summon", index } : { type: "play-skill", index });
+  }
+
   function renderOppStrip(): void {
-    const deck = state().players[opp].deck;
-    if (deck.length === 0) { oppStrip.replaceChildren(); return; }
-    const revealed = new Set(state().players[me].revealed);
+    const s = state();
+    if (!cards()) { oppStrip.replaceChildren(); return; }
+    const hand = s.players[opp].hand;
+    const revealed = new Set(s.players[me].revealed);
+    const lasting = s.players[opp].lasting;
+    const pending = myStep();
+    // A card that is asking about the opponent's hand turns these into buttons.
+    const pickable =
+      pending?.kind === "targeting" && !!currentSpec(pending)?.kinds.includes("opp-hand");
+
     oppStrip.replaceChildren(
       el("span", { class: "opp-strip-label", text: t("game.oppSkills") }),
-      ...deck.map((c, i) => {
-        const shown = revealed.has(i) && c.id !== "hidden";
-        const peekable = foresightPeek && !shown;
+      ...hand.map((id, i) => {
+        const shown = revealed.has(i) && id !== "hidden";
         const chip = el("div", {
-          class: `opp-card${shown ? " revealed" : ""}${peekable ? " peekable" : ""}`,
-          text: shown ? skillName(c.id) : "❓",
+          class: `opp-card${shown ? " revealed" : ""}${pickable ? " peekable" : ""}`,
+          text: shown ? cardName(id) : "❓",
         });
-        if (peekable) chip.onclick = () => { foresightPeek = false; session.dispatch({ type: "foresight", index: i }); };
+        if (pickable) chip.onclick = () => pick({ type: "target", index: i });
         return chip;
       }),
+      // 지속 cards the opponent has in play are public — they are changing the
+      // rules everyone is playing by.
+      ...lasting.map((l) =>
+        el("div", { class: "opp-card lasting", text: `${skillIcon(l.card)} ${cardName(l.card)}` }),
+      ),
     );
   }
 
@@ -357,202 +749,138 @@ export function mountGame(
   function legalTargets(from: Square): Square[] {
     return generateLegalMoves(state().chess, from, state().rules).map((m) => m.to);
   }
-  function sacrificeDests(from: Square): Square[] {
+  /** Moves that take nothing — what 희생의 대가 allows. */
+  function quietDests(from: Square): Square[] {
     return generateLegalMoves(state().chess, from, state().rules).filter((m) => !m.captured).map((m) => m.to);
   }
-  function targetingHighlights(): Square[] {
-    if (!targeting) return [];
-    const id = targeting.skillId;
-    if (id === "teleport") return targeting.picks;
-    if (id === "phantom") {
-      const from = targeting.picks[0];
-      if (from === undefined) return [];
-      const rules: SkillRules = { ...state().rules, phantom: { ...state().rules.phantom, [me]: true } };
-      return generateLegalMoves(state().chess, from, rules).map((m) => m.to);
-    }
-    if (SRC_DEST.has(id)) {
-      const from = targeting.picks[0];
-      return from === undefined ? [] : repositionDests(id, from);
-    }
-    return [];
+
+  // ── generic targeting ──────────────────────────────────────
+  type Targeting = Extract<NonNullable<MatchState["pending"]>, { kind: "targeting" }>;
+
+  /** The spec the card is asking about right now. */
+  function currentSpec(p: Targeting): TargetSpec | undefined {
+    return skillMeta(p.card)?.targets?.[p.step];
   }
-  function repositionDests(id: string, from: Square): Square[] {
-    const board = state().chess.board;
-    const piece = board[from]!;
-    const f = fileOf(from), r = rankOf(from);
-    const dir = piece.color === "w" ? 1 : -1;
+
+  function pickedSquares(p: Targeting): Square[] {
+    return (p.picks[p.step] ?? [])
+      .filter((x): x is { kind: "square"; sq: Square } => x.kind === "square")
+      .map((x) => x.sq);
+  }
+
+  /** Every square this step would accept — the board's own list of options. */
+  function targetSquares(p: Targeting): Square[] {
+    const spec = currentSpec(p);
+    if (!spec) return [];
+    const wantsSquare = spec.kinds.some(
+      (k: string) => k === "own-piece" || k === "enemy-piece" || k === "empty",
+    );
+    if (!wantsSquare) return [];
+    const s = state();
+    const already = new Set(pickedSquares(p));
     const out: Square[] = [];
-    const add = (nf: number, nr: number, cap: boolean) => {
-      if (!onBoard(nf, nr)) return;
-      const to = makeSquare(nf, nr);
-      const t = board[to];
-      if (!t) out.push(to);
-      else if (cap && t.color !== piece.color) out.push(to);
-    };
-    if (id === "retreat") { add(f, r - dir, false); add(f - 1, r, false); add(f + 1, r, false); }
-    else if (id === "cross-diagonal") {
-      const dirs: [number, number][] = piece.type === "b"
-        ? [[1, 0], [-1, 0], [0, 1], [0, -1]] : [[1, 1], [-1, 1], [1, -1], [-1, -1]];
-      for (const [df, dr] of dirs) add(f + df, r + dr, true);
-    } else {
-      for (const [df, dr] of TITAN_DIRS) add(f + df, r + dr, false);
+    for (let sq = 0; sq < s.chess.board.length; sq++) {
+      if (already.has(sq)) continue;
+      const piece = s.chess.board[sq];
+      if (!piece) {
+        if (spec.kinds.includes("empty")) out.push(sq);
+        continue;
+      }
+      if (piece.type === "k" && !spec.king) continue;
+      if (spec.pieces && !spec.pieces.includes(piece.type)) continue;
+      if (spec.kinds.includes("own-piece") && piece.color === me) out.push(sq);
+      else if (spec.kinds.includes("enemy-piece") && piece.color !== me) out.push(sq);
     }
     return out;
   }
-  function titanReach(s: MatchState): { anchor: Square; cells: Square[] }[] {
-    const titan = s.titan!;
-    const board = s.chess.board;
-    const res: { anchor: Square; cells: Square[] }[] = [];
-    for (const [df, dr] of TITAN_DIRS) {
-      for (let d = 1; d <= 4; d++) {
-        if (!titan.cells.every((sq) => onBoard(fileOf(sq) + df * d, rankOf(sq) + dr * d))) break;
-        const cells = titan.cells.map((sq) => makeSquare(fileOf(sq) + df * d, rankOf(sq) + dr * d));
-        if (cells.some((sq) => board[sq]?.color === titan.owner)) continue;
-        res.push({ anchor: cells[0]!, cells });
-      }
-    }
-    return res;
+
+  function targetPrompt(p: Targeting): string {
+    const spec = currentSpec(p);
+    const what = !spec ? ""
+      : spec.kinds.includes("choice") ? t("target.choice")
+      : spec.kinds.includes("empty") && spec.kinds.length === 1 ? t("target.empty")
+      : spec.kinds.includes("own-piece") && !spec.kinds.includes("enemy-piece") ? t("target.own")
+      : spec.kinds.includes("enemy-piece") && !spec.kinds.includes("own-piece") ? t("target.enemy")
+      : spec.kinds.includes("own-hand") ? t("target.ownHand")
+      : spec.kinds.includes("opp-hand") ? t("target.oppHand")
+      : spec.kinds.includes("discard") ? t("target.discard")
+      : spec.kinds.includes("lasting") ? t("target.lasting")
+      : t("target.pick");
+    return `${cardName(p.card)} — ${what}`;
   }
 
-  // ── skill activation & input ───────────────────────────────
-  function activateSkill(id: string): void {
-    if (targeting?.skillId === id) { targeting = null; return render(); }
-    if (foresightPeek && id === "foresight") { foresightPeek = false; return render(); }
-    selected = null;
-    if (IMMEDIATE[id]) {
-      session.dispatch({ type: IMMEDIATE[id] } as never);
-    } else if (id === "foresight") {
-      foresightPeek = true;
-    } else {
-      targeting = { skillId: id, picks: [] };
-    }
-    render();
-  }
+  const pick = (a: Action): void => session.dispatch(a);
 
   function handleClick(sq: Square): void {
     const s = state();
     if (s.status === "ended" || opponentLeft) return;
 
-    if (s.pending && s.pending.color === me) return handlePending(sq);
-    if (targeting) return handleTargeting(sq);
+    const pending = myStep();
+    if (pending) return handlePending(sq, pending);
+    if (s.pending) return; // waiting on the opponent
     if (!myTurn()) return;
-
-    if (s.titan && s.titan.owner === me) {
-      if (titanSelected) {
-        const dest = titanReach(s).find((r) => r.anchor === sq);
-        if (dest) { titanSelected = false; return session.dispatch({ type: "titan-move", cells: dest.cells }); }
-        if (s.titan.cells.includes(sq)) { titanSelected = false; return render(); }
-        titanSelected = false; // fall through to normal move
-      } else if (s.titan.cells.includes(sq)) {
-        titanSelected = true;
-        return render();
-      }
-    }
 
     handleNormalClick(sq);
   }
 
+  /** Our own piece that is free to be picked up this turn. */
+  function movable(sq: Square): boolean {
+    const s = state();
+    const p = s.chess.board[sq];
+    if (!p || p.color !== me) return false;
+    return !stuckSquares().includes(sq);
+  }
+
   function handleNormalClick(sq: Square): void {
-    const board = state().chess.board;
+    if (state().moveSpent) return; // a card was played instead of the move
     if (selected === null) {
-      const p = board[sq];
-      if (p && p.color === me && sq !== state().players[me].lockedFrom) { selected = sq; render(); }
+      if (movable(sq)) { selected = sq; render(); }
       return;
     }
     if (sq === selected) { selected = null; return render(); }
-    const p = board[sq];
-    if (p && p.color === me && sq !== state().players[me].lockedFrom) { selected = sq; return render(); }
+    if (movable(sq)) { selected = sq; return render(); }
     if (legalTargets(selected).includes(sq)) {
-      void dispatchMove(selected, sq, "move");
+      void dispatchMove(selected, sq);
     } else {
       selected = null;
       render();
     }
   }
 
-  async function dispatchMove(from: Square, to: Square, type: "move" | "phantom-move"): Promise<void> {
+  async function dispatchMove(from: Square, to: Square): Promise<void> {
     let promotion: PieceType | undefined;
     if (isPromotion(from, to)) promotion = await pickPromotion();
     selected = null;
-    targeting = null;
-    session.dispatch(type === "move" ? { type: "move", from, to, promotion } : { type: "phantom-move", from, to });
+    session.dispatch({ type: "move", from, to, promotion });
     render();
   }
 
-  function handleTargeting(sq: Square): void {
-    const id = targeting!.skillId;
+  function handlePending(sq: Square, p: NonNullable<MatchState["pending"]>): void {
     const board = state().chess.board;
-    const mine = board[sq]?.color === me;
 
-    if (id === "teleport") {
-      if (!mine || board[sq]!.type === "k") { targeting = null; return render(); }
-      const picks = targeting!.picks;
-      const idx = picks.indexOf(sq);
-      if (idx >= 0) picks.splice(idx, 1); else picks.push(sq);
-      if (picks.length === 2) { const [a, b] = picks; targeting = null; session.dispatch({ type: "teleport", a: a!, b: b! }); }
-      return render();
-    }
-
-    if (SINGLE_TARGET.has(id)) {
-      if (!mine || board[sq]!.type === "k" || (id !== "iron-guard" && board[sq]!.type === "q")) { targeting = null; return render(); }
-      targeting = null;
-      if (id === "iron-guard") session.dispatch({ type: "iron-guard", sq });
-      else if (id === "evolve-gamble") session.dispatch({ type: "evolve", sq });
-      else session.dispatch({ type: "revive", fuel: sq });
-      return render();
-    }
-
-    if (id === "sacrifice-pact") {
-      if (!mine || board[sq]!.type === "k") { targeting = null; return render(); }
-      targeting = null;
-      session.dispatch({ type: "sacrifice-start", sq });
-      return render();
-    }
-
-    // source → destination (retreat / cross-diagonal / raid-march / phantom)
-    if (targeting!.picks.length === 0) {
-      if (mine) { targeting!.picks = [sq]; render(); } else { targeting = null; render(); }
+    if (p.kind === "summon-place") {
+      if (summonZone(state(), me).includes(sq)) session.dispatch({ type: "summon-place", sq });
       return;
     }
-    const from = targeting!.picks[0]!;
-    if (sq === from) { targeting = null; return render(); }
-    const dests = id === "phantom" ? phantomDests(from) : repositionDests(id, from);
-    if (dests.includes(sq)) {
-      targeting = null;
-      if (id === "phantom") void dispatchMove(from, sq, "phantom-move");
-      else session.dispatch({ type: id, from, to: sq } as never);
-      return render();
+    if (p.kind === "targeting") {
+      if (targetSquares(p).includes(sq)) pick({ type: "target", sq });
+      return;
     }
-    if (mine) { targeting!.picks = [sq]; render(); } else { targeting = null; render(); }
-  }
+    if (p.kind !== "free-moves") return; // draw / discard / counter are answered off-board
 
-  function phantomDests(from: Square): Square[] {
-    const rules: SkillRules = { ...state().rules, phantom: { ...state().rules.phantom, [me]: true } };
-    return generateLegalMoves(state().chess, from, rules).map((m) => m.to);
-  }
-
-  function handlePending(sq: Square): void {
-    const p = state().pending!;
-    const board = state().chess.board;
-    if (p.kind === "revive-place" || p.kind === "kings-return") {
-      if (board[sq]) return;
-      session.dispatch(p.kind === "revive-place" ? { type: "revive-place", sq } : { type: "kings-return-place", sq });
+    if (freeMoveSource === null) {
+      if (board[sq]?.color === me && !p.moved.includes(sq)) { freeMoveSource = sq; render(); }
       return;
     }
-    // sacrifice
-    if (sacSource === null) {
-      if (board[sq]?.color === me && !p.moved.includes(sq)) { sacSource = sq; render(); }
+    if (sq === freeMoveSource) { freeMoveSource = null; return render(); }
+    if (quietDests(freeMoveSource).includes(sq)) {
+      const from = freeMoveSource;
+      freeMoveSource = null;
+      session.dispatch({ type: "free-move", from, to: sq });
       return;
     }
-    if (sq === sacSource) { sacSource = null; return render(); }
-    if (sacrificeDests(sacSource).includes(sq)) {
-      const from = sacSource;
-      sacSource = null;
-      session.dispatch({ type: "sacrifice-move", from, to: sq });
-      return;
-    }
-    if (board[sq]?.color === me && !p.moved.includes(sq)) { sacSource = sq; render(); }
-    else { sacSource = null; render(); }
+    if (board[sq]?.color === me && !p.moved.includes(sq)) { freeMoveSource = sq; render(); }
+    else { freeMoveSource = null; render(); }
   }
 
   function isPromotion(from: Square, to: Square): boolean {
@@ -565,8 +893,8 @@ export function mountGame(
         ? { q: "♕", r: "♖", b: "♗", n: "♘" } : { q: "♛", r: "♜", b: "♝", n: "♞" };
       overlay.replaceChildren(
         el("div", { class: "promo-overlay" },
-          (["q", "r", "b", "n"] as PieceType[]).map((t) =>
-            el("button", { class: "promo-btn", text: glyphs[t], onclick: () => { overlay.classList.add("hidden"); overlay.replaceChildren(); resolve(t); } }),
+          (["q", "r", "b", "n"] as PieceType[]).map((type) =>
+            el("button", { class: "promo-btn", text: glyphs[type], onclick: () => { overlay.classList.add("hidden"); overlay.replaceChildren(); resolve(type); } }),
           ),
         ),
       );
@@ -574,19 +902,85 @@ export function mountGame(
     });
   }
 
+  // ── the action feed ────────────────────────────────────────
+  /** How many lines of history the feed keeps on screen. */
+  const LOG_LINES = 5;
+  let flashTimer: number | undefined;
+
+  /**
+   * Turn one engine event into a line of the feed — and, for a card actually
+   * being played, into the card itself sailing across the board. Cards resolve
+   * in a single reducer step, so without this the only evidence that something
+   * happened is the board quietly changing.
+   */
+  function logEvent(e: MatchEvent): void {
+    const who = (color: Color) => (color === me ? t("game.you") : t("game.opponent"));
+    let text: string | null = null;
+    let cls = "";
+
+    if (e.type === "played") {
+      const summon = isPieceCard(e.card);
+      text = t(summon ? "log.summoned" : "log.played")
+        .replace("{who}", who(e.color))
+        .replace("{card}", cardName(e.card));
+      cls = summon ? "summon" : "play";
+      if (!summon || e.color === me) flashCard(e.card, e.color);
+    } else if (e.type === "drew") {
+      // The opponent's draw is public as an event, but not as a card.
+      const known = e.color === me && e.card !== "hidden";
+      text = t(known ? "log.drew" : "log.drewHidden")
+        .replace("{who}", who(e.color))
+        .replace("{card}", known ? cardName(e.card) : "");
+      cls = "draw";
+    } else if (e.type === "destroyed") {
+      text = t("log.destroyed").replace("{card}", cardName(e.card));
+      cls = "destroy";
+    } else if (e.type === "dice") {
+      text = t("log.dice").replace("{who}", who(e.color)).replace("{n}", String(e.value));
+      cls = "dice";
+    } else if (e.type === "game-over") {
+      text = tPassthrough(e.reason);
+      cls = "over";
+    }
+    if (!text) return;
+
+    actionLog.appendChild(el("div", { class: `log-line ${cls}`, text }));
+    while (actionLog.childElementCount > LOG_LINES) actionLog.firstElementChild?.remove();
+  }
+
+  /** The played card, big, over the board for a moment. */
+  function flashCard(cardId: string, color: Color): void {
+    playFlash.replaceChildren(
+      el("div", { class: `flash-card ${color === me ? "mine" : "theirs"}` }, [
+        cardEl(cardId, "md"),
+        el("span", { class: "flash-who", text: color === me ? t("game.you") : t("game.opponent") }),
+      ]),
+    );
+    fitNames(playFlash);
+    playFlash.classList.remove("hidden");
+    if (flashTimer) clearTimeout(flashTimer);
+    flashTimer = window.setTimeout(() => {
+      playFlash.classList.add("hidden");
+      playFlash.replaceChildren();
+    }, 1400);
+  }
+
   // ── wire up ────────────────────────────────────────────────
   let toastTimer: number | undefined;
   function showToast(text: string): void {
-    toast.textContent = text;
+    toast.textContent = tPassthrough(text);
     toast.classList.remove("hidden");
     if (toastTimer) clearTimeout(toastTimer);
     toastTimer = window.setTimeout(() => toast.classList.add("hidden"), 1600);
   }
 
   session.subscribe((_s, events) => {
-    for (const e of events) if (e.type === "toast") showToast(e.text);
+    for (const e of events) {
+      if (e.type === "toast") showToast(e.text);
+      logEvent(e);
+    }
     // Reset local targeting if the turn/pending situation changed under us.
-    if (!myTurn()) { selected = null; targeting = null; }
+    if (!myTurn()) { selected = null; freeMoveSource = null; }
     render();
   });
 

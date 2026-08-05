@@ -1,6 +1,14 @@
-import { createMatch, reduce, type Action, type MatchEvent, type MatchState } from "@skill/engine";
+import {
+  createMatch,
+  reduce,
+  type Action,
+  type GameMode,
+  type MatchEvent,
+  type MatchState,
+} from "@skill/engine";
 import type { Color } from "@skill/chess-core";
 import { chooseMove, type SearchOptions } from "./ai.js";
+import { aiCardAction } from "./ai-cards.js";
 
 /**
  * A session is the client's handle on an authoritative match. Both flavours
@@ -32,6 +40,7 @@ export interface Session {
 }
 
 export interface LocalConfig {
+  mode: GameMode;
   humanColor: Color;
   humanDeck: string[];
   aiDeck: string[];
@@ -39,39 +48,73 @@ export interface LocalConfig {
   search: SearchOptions;
 }
 
+/** How long the AI pauses before each of its own actions. */
+const AI_MOVE_DELAY_MS = 350;
+/** A card step is bookkeeping, not thinking — it should not feel deliberated. */
+const AI_CARD_DELAY_MS = 220;
+
 /** Single-player: runs the same engine reducer in-process; the AI emits moves. */
 export function createLocalSession(cfg: LocalConfig): Session {
   const aiColor: Color = cfg.humanColor === "w" ? "b" : "w";
   const whiteDeck = cfg.humanColor === "w" ? cfg.humanDeck : cfg.aiDeck;
   const blackDeck = cfg.humanColor === "w" ? cfg.aiDeck : cfg.humanDeck;
 
-  let state = createMatch(whiteDeck, blackDeck);
+  let state = createMatch(cfg.mode, whiteDeck, blackDeck, Math.random);
   let listener: ((s: MatchState, e: MatchEvent[]) => void) | null = null;
   let disposed = false;
   let timer: number | undefined;
   // Local play has no opponent to negotiate with, so notices never fire.
 
-  function apply(action: Action): void {
+  function apply(action: Action): boolean {
     const res = reduce(state, action, Math.random);
     if (!res.ok) {
       console.warn("[local] rejected action", action.type, res.error);
-      return;
+      return false;
     }
     state = res.state;
     listener?.(state, res.events);
     scheduleAi();
+    return true;
+  }
+
+  /** True when the engine is waiting on the AI for anything at all. */
+  function aiOnTheHook(): boolean {
+    if (state.status !== "playing") return false;
+    return state.pending ? state.pending.color === aiColor : state.chess.turn === aiColor;
   }
 
   function scheduleAi(): void {
-    if (disposed || state.status !== "playing" || state.pending) return;
-    if (state.chess.turn !== aiColor) return;
+    if (disposed || !aiOnTheHook()) return;
+    if (timer) clearTimeout(timer);
+    // The AI's turn is now several steps — draw, summon, skills, then the move
+    // — so each step is scheduled on its own and re-schedules the next.
+    const cardStep = aiCardAction(state, aiColor);
+    const delay = cardStep ? AI_CARD_DELAY_MS : AI_MOVE_DELAY_MS;
     timer = window.setTimeout(() => {
-      if (disposed || state.chess.turn !== aiColor || state.pending || state.status !== "playing") return;
-      const disguise = state.players[cfg.humanColor].cloakTurnsLeft > 0 ? cfg.humanColor : undefined;
-      const forbidden = state.players[aiColor].lockedFrom ?? undefined;
+      timer = undefined;
+      if (disposed || !aiOnTheHook()) return;
+
+      const step = aiCardAction(state, aiColor);
+      if (step) {
+        // A rejected card step would loop forever if it were retried, so a
+        // refusal falls through to the move instead.
+        if (apply(step)) return;
+      }
+      if (state.pending || state.chess.turn !== aiColor) return;
+
+      // 환각 makes the human's pieces read as pawns to whoever is fooled.
+      const fooled = state.players[cfg.humanColor].lasting.some((l) => l.card === "hallucination");
+      const disguise = fooled ? cfg.humanColor : undefined;
+      const forbidden = state.players[aiColor].locked[0];
       const move = chooseMove(state.chess, cfg.search, state.rules, forbidden, disguise);
-      if (move) apply({ type: "move", from: move.from, to: move.to, promotion: move.promotion });
-    }, 350);
+      if (move) {
+        apply({ type: "move", from: move.from, to: move.to, promotion: move.promotion });
+      } else if (state.moveSpent || state.phase !== "move") {
+        // Nothing to move (or the move was spent on a card): hand the turn over
+        // rather than sitting on it forever.
+        apply({ type: "end-turn" });
+      }
+    }, delay);
   }
 
   scheduleAi(); // AI moves first if the human plays black
@@ -85,11 +128,11 @@ export function createLocalSession(cfg: LocalConfig): Session {
       listener = cb;
     },
     onNotice: () => {},
-    dispatch: (action) => apply(action),
+    dispatch: (action) => void apply(action),
     rematch: () => {
       if (disposed) return;
       if (timer) clearTimeout(timer);
-      state = createMatch(whiteDeck, blackDeck);
+      state = createMatch(cfg.mode, whiteDeck, blackDeck, Math.random);
       listener?.(state, []);
       scheduleAi(); // AI moves first again if the human plays black
     },

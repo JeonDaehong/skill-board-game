@@ -1,12 +1,15 @@
+import { GAME_MODES, modeRules, type GameMode } from "@skill/engine";
 import { el, type AppContext, type Screen } from "../router.js";
 import { GAMES } from "../games.js";
 import { driveMatchmaking, type Matchmaking } from "../net.js";
+import { deckForMatch, deckReady, deckTotal, loadDeck } from "../decks.js";
 import { multiScreen } from "./multi.js";
+import { makeDeckScreen } from "./deck.js";
 import { art, objectUrl } from "../ui/art.js";
 import {
   TIME_CONTROLS, getTimeControlId, setTimeControlId, timeControlById, timeControlLabel,
 } from "../clock.js";
-import { gameName, getLang, t } from "../i18n.js";
+import { gameName, getLang, modeName, t } from "../i18n.js";
 
 /**
  * Create Room: fill in a title / optional password / game, create the room, and
@@ -16,6 +19,9 @@ import { gameName, getLang, t } from "../i18n.js";
 export const createRoomScreen: Screen = (ctx: AppContext) => {
   let mm: Matchmaking | null = null;
   let selectedGame = GAMES.find((g) => g.playable)!.id;
+  // The room's mode is the host's to set, exactly like its clock. Only chess
+  // has modes; every other game ignores this and plays classic.
+  let selectedMode: GameMode = "classic";
   // The host sets the room's clock, so this screen owns the choice rather
   // than inheriting whatever single play last used.
   let control = timeControlById(getTimeControlId());
@@ -43,6 +49,7 @@ export const createRoomScreen: Screen = (ctx: AppContext) => {
                 selectedGame = g.id;
                 chips.querySelectorAll(".game-chip").forEach((c) => c.classList.remove("active"));
                 chip.classList.add("active");
+                syncModeRow();
               }
             : undefined,
         }, [
@@ -72,6 +79,35 @@ export const createRoomScreen: Screen = (ctx: AppContext) => {
       }),
     );
 
+    const modes = el(
+      "div",
+      { class: "game-chips" },
+      GAME_MODES.map((m) => {
+        const want = modeRules(m).deckSize;
+        const have = want === 0 ? 0 : deckTotal(loadDeck(m));
+        const chip = el("button", {
+          class: `game-chip${m === selectedMode ? " active" : ""}`,
+          onclick: () => {
+            selectedMode = m;
+            modes.querySelectorAll(".game-chip").forEach((c) => c.classList.remove("active"));
+            chip.classList.add("active");
+            errorLine.replaceChildren();
+          },
+        }, [
+          el("span", { text: modeName(m) }),
+          want === 0 ? null : el("span", { class: "chip-count", text: `${have}/${want}` }),
+        ]);
+        return chip;
+      }),
+    );
+    const modeLabel = el("label", { class: "field-label", text: t("room.mode") });
+    const syncModeRow = (): void => {
+      const show = selectedGame === "chess";
+      modes.style.display = show ? "" : "none";
+      modeLabel.style.display = show ? "" : "none";
+      if (!show) selectedMode = "classic";
+    };
+
     const errorLine = el("div", { class: "form-error" });
 
     container.replaceChildren(
@@ -84,6 +120,8 @@ export const createRoomScreen: Screen = (ctx: AppContext) => {
         pwInput,
         el("label", { class: "field-label", text: t("room.game") }),
         chips,
+        modeLabel,
+        modes,
         el("label", { class: "field-label", text: t("setup.clock") }),
         clocks,
         el("div", { class: "field-note", text: t("room.hostNote") }),
@@ -91,10 +129,39 @@ export const createRoomScreen: Screen = (ctx: AppContext) => {
         el("button", {
           class: "btn btn-primary btn-block",
           text: t("room.create"),
-          onclick: () => create(titleInput.value, pwInput.value),
+          onclick: () => {
+            if (!deckOk(errorLine)) return;
+            create(titleInput.value, pwInput.value);
+          },
         }),
       ]),
     );
+    syncModeRow();
+  }
+
+  /**
+   * A room cannot be hosted with an unfinished deck — the server would reject
+   * the match anyway. Say what is missing and offer the builder right there.
+   */
+  function deckOk(errorLine: HTMLElement): boolean {
+    if (selectedGame !== "chess") return true;
+    const want = modeRules(selectedMode).deckSize;
+    const deck = loadDeck(selectedMode);
+    if (deckReady(selectedMode, deck)) return true;
+    errorLine.replaceChildren(
+      el("span", {
+        text: t("mode.deckShort")
+          .replace("{mode}", modeName(selectedMode))
+          .replace("{want}", String(want))
+          .replace("{have}", String(deckTotal(deck))),
+      }),
+      el("button", {
+        class: "btn btn-ghost btn-small",
+        text: t("mode.buildDeck"),
+        onclick: () => ctx.navigate(makeDeckScreen(selectedMode, createRoomScreen)),
+      }),
+    );
+    return false;
   }
 
   function create(title: string, password: string): void {
@@ -110,7 +177,8 @@ export const createRoomScreen: Screen = (ctx: AppContext) => {
         title,
         password,
         gameId: selectedGame,
-        deck: [],
+        mode: selectedMode,
+        deck: deckForMatch(selectedMode),
         timeControl: { mainMs: control.mainMs, incrementMs: control.stepMs },
       },
     );

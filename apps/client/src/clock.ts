@@ -11,7 +11,7 @@
  *    exactly `stepMs` per move, forever, which never ends the game by itself.
  *  - "byoyomi" (초읽기) — the main time drains, and after that each turn gets a
  *    fresh `stepMs` that does NOT accumulate. Miss it once and you flag. This
- *    is the janggi/baduk convention, and what deck-config.ts already describes.
+ *    is the janggi/baduk convention.
  *
  * The clock is wall-clock based (`Date.now()` deltas, not tick counting), so a
  * throttled background tab or a slow frame cannot hand a player free time.

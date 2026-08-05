@@ -2,6 +2,7 @@ import {
   createMatch,
   reduce,
   type Action,
+  type GameMode,
   type MatchEvent,
   type MatchState,
   type Rng,
@@ -30,9 +31,11 @@ export interface RoomEngine {
   reset(): void;
 }
 
-function makeChessEngine(whiteDeck: string[], blackDeck: string[]): RoomEngine {
-  let match: MatchState = createMatch(whiteDeck, blackDeck);
+function makeChessEngine(mode: GameMode, whiteDeck: string[], blackDeck: string[]): RoomEngine {
+  // The seed is drawn first so the shuffle that deals the opening hands is part
+  // of the same reproducible stream as everything that follows it.
   let rng: Rng = mulberry32((Math.random() * 2 ** 31) | 0);
+  let match: MatchState = createMatch(mode, whiteDeck, blackDeck, rng);
   return {
     turn: () => (match.pending ? match.pending.color : match.chess.turn),
     isEnded: () => match.status === "ended",
@@ -55,8 +58,8 @@ function makeChessEngine(whiteDeck: string[], blackDeck: string[]): RoomEngine {
       return res.events;
     },
     reset() {
-      match = createMatch(whiteDeck, blackDeck);
       rng = mulberry32((Math.random() * 2 ** 31) | 0);
+      match = createMatch(mode, whiteDeck, blackDeck, rng);
     },
   };
 }
@@ -92,11 +95,16 @@ function makeBoardEngine(mod: GameModule): RoomEngine {
 }
 
 /** Build the right engine for a game id. Unknown ids fall back to chess. */
-export function makeEngine(gameId: string, whiteDeck: string[], blackDeck: string[]): RoomEngine {
-  if (gameId === "chess") return makeChessEngine(whiteDeck, blackDeck);
+export function makeEngine(
+  gameId: string,
+  mode: GameMode,
+  whiteDeck: string[],
+  blackDeck: string[],
+): RoomEngine {
+  if (gameId === "chess") return makeChessEngine(mode, whiteDeck, blackDeck);
   const mod = getGameModule(gameId);
   if (mod) return makeBoardEngine(mod);
-  return makeChessEngine(whiteDeck, blackDeck);
+  return makeChessEngine(mode, whiteDeck, blackDeck);
 }
 
 /** Small seeded PRNG so a room's randomness is reproducible for debugging. */

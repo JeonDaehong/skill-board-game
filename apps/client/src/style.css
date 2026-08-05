@@ -296,6 +296,53 @@ button { font-family: inherit; }
 .mode-label { flex: 1; font-family: var(--display); font-size: 1.15rem; font-weight: 700; color: var(--gold-lt); }
 .mode-arrow { font-size: 1.5rem; color: var(--gold); opacity: 0.75; }
 
+/* ── Mode select (classic / skill / master) ───────────────────
+   Three tiles plus a detail panel. The mode decides the board size and which
+   deck the match is played with, so it gets a screen rather than a chip on the
+   setup form — and a tile whose deck is unfinished says so on its face. */
+.mode-screen { justify-content: center; }
+.screen-sub { margin: -8px 0 0; color: var(--muted); font-size: 0.9rem; font-style: italic; }
+.mode-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; width: min(94vw, 720px); }
+.mode-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 18px 12px 14px; text-align: center; cursor: pointer; color: var(--fg);
+  background: linear-gradient(180deg, #2b1e14, #201610);
+  border: 1px solid var(--frame); border-radius: var(--r); box-shadow: var(--frame-in);
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+.mode-tile:hover { transform: translateY(-4px); border-color: var(--gold); }
+.mode-tile.active {
+  background: linear-gradient(180deg, #3a2a1b, #241811);
+  border-color: var(--gold);
+  box-shadow: var(--frame-in), 0 0 26px rgba(216, 150, 70, 0.3);
+}
+.mode-art { width: 62px; height: 62px; object-fit: contain; filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.6)); }
+.mode-tile.unready .mode-art { filter: grayscale(0.7) brightness(0.72); }
+.mode-name { font-family: var(--display); font-size: 1.05rem; font-weight: 700; color: var(--gold-lt); }
+.mode-tag { font-size: 0.78rem; color: var(--muted); min-height: 2.4em; }
+.mode-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.mode-chip { padding: 3px 9px; border-radius: 999px; font-size: 0.7rem; font-variant-numeric: tabular-nums; color: var(--muted); background: rgba(0, 0, 0, 0.32); border: 1px solid var(--frame); }
+.mode-chip.ok { color: #cfe6a8; border-color: #4c6032; }
+.mode-chip.warn { color: #ffc0aa; border-color: #6d3527; }
+.mode-detail { width: min(94vw, 720px); padding: 18px 20px; display: flex; flex-direction: column; gap: 8px; }
+.mode-detail-name { margin: 0; font-family: var(--display); font-size: 1.15rem; font-weight: 700; color: var(--gold-lt); }
+.mode-detail-desc { margin: 0; font-size: 0.9rem; line-height: 1.5; }
+.mode-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+.mode-warn { flex: 1; min-width: 220px; font-size: 0.84rem; color: #ffc0aa; }
+/* Which mode a room or a live match is playing, wherever one is named. */
+.game-mode-chip {
+  padding: 2px 9px; border-radius: 999px;
+  font-family: var(--ui); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em;
+  color: var(--gold-lt); background: #4a3620; border: 1px solid var(--gold-dk);
+}
+.chip-count { font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) {
+  .mode-grid { grid-template-columns: 1fr; }
+  .mode-tile { flex-direction: row; text-align: left; gap: 12px; }
+  .mode-art { width: 44px; height: 44px; }
+  .mode-tag { display: none; }
+}
+
 /* ── Forms ───────────────────────────────────────────────── */
 .create-screen, .join-screen { justify-content: flex-start; padding-top: 74px; gap: 16px; }
 .form-card { width: min(92vw, 440px); padding: 24px; display: flex; flex-direction: column; gap: 10px; }
@@ -328,7 +375,7 @@ button { font-family: inherit; }
 .room-icon { width: 44px; height: 44px; flex: 0 0 auto; object-fit: contain; padding: 5px; background-color: #2a1d12; background-size: 62%; background-repeat: no-repeat; background-position: center; border: 1px solid var(--frame); border-radius: 50%; }
 .room-body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .room-title { font-weight: 700; font-size: 1rem; color: var(--gold-lt); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.room-meta { font-size: 0.8rem; color: var(--muted); }
+.room-meta { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--muted); }
 .room-card .field-input { flex: 1; }
 
 /* ── Lobby / waiting ─────────────────────────────────────── */
@@ -411,6 +458,14 @@ button { font-family: inherit; }
 .option-list { display: flex; flex-direction: column; gap: 10px; width: min(90vw, 360px); }
 .option-row { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; background: linear-gradient(180deg, #2b1e14, #201610); border: 1px solid var(--frame); border-radius: var(--r-sm); box-shadow: var(--frame-in); }
 .chip { background: #4a3620; padding: 4px 12px; border-radius: 999px; font-size: 0.85rem; color: var(--gold-lt); font-family: var(--ui); border: 1px solid var(--gold-dk); }
+
+/* Coupon entry: the field needs the whole row on a phone, so the row wraps. */
+.coupon-row { flex-wrap: wrap; gap: 10px; }
+.coupon-entry { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 200px; }
+.coupon-input { flex: 1; min-width: 0; padding: 8px 12px; font-size: 0.9rem; letter-spacing: 0.04em; }
+.coupon-note { min-height: 1.2em; font-size: 0.84rem; text-align: center; }
+.coupon-note.ok { color: var(--good); }
+.coupon-note.bad { color: var(--danger); }
 
 /* ── Legacy buttons (game view / skill-select) ───────────── */
 .back-btn, .start-btn, .icon-btn {
@@ -576,7 +631,8 @@ button { font-family: inherit; }
 .deck-pool { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
 .pool-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
 .filter-group { display: flex; gap: 6px; flex-wrap: wrap; }
-.filter-chip { padding: 5px 12px; font-family: var(--ui); font-size: 0.82rem; color: var(--muted); cursor: pointer; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--frame); border-radius: 999px; transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease; }
+.filter-chip { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; font-family: var(--ui); font-size: 0.82rem; color: var(--muted); cursor: pointer; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--frame); border-radius: 999px; transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease; }
+.filter-icon { width: 1.15em; height: 1.15em; border-radius: 3px; }
 .filter-chip:hover { color: var(--fg); border-color: var(--gold-dk); }
 .filter-chip.active { background: var(--grad-gold); border-color: var(--gold-lt); color: #2a1809; font-weight: 700; }
 .pool-grid { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(136px, 1fr)); gap: 16px; align-content: start; padding: 8px 6px 20px; }
@@ -640,6 +696,23 @@ button { font-family: inherit; }
 
 .tcg-art { position: absolute; left: var(--ax0); right: var(--ax1); top: var(--ay0); bottom: var(--ay1); overflow: hidden; z-index: 1; }
 .tcg-art-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* A piece card carries a sculpt, not a scene. Cropping a scene to fill the
+   window is fine; cropping a piece cuts its crown off, so it is contained and
+   set on the parchment instead, with room to breathe. */
+.tcg-art.piece { background: radial-gradient(circle at 50% 38%, #4a3620, #241811 74%); }
+/* The sculpts are about 1:2 and the window is landscape, so height is what
+   binds — the padding stays small or the piece shrinks to nothing. */
+.tcg-art.piece .tcg-art-img { object-fit: contain; padding: 4%; }
+/* Stand-in for a card whose art has not been painted yet. */
+.tcg-glyph {
+  display: grid; place-items: center;
+  width: 100%; height: 100%;
+  font-size: 2.6rem; line-height: 1;
+  background: radial-gradient(circle at 50% 35%, #4a3620, #241811 70%);
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.7));
+}
+.tcg-card.sm .tcg-glyph { font-size: 1.6rem; }
+.tcg-card.xs .tcg-glyph { font-size: 0.9rem; }
 .tcg-frame { position: absolute; inset: 0; z-index: 2; background-size: 100% 100%; background-repeat: no-repeat; pointer-events: none; }
 
 .tcg-gem {
@@ -666,7 +739,9 @@ button { font-family: inherit; }
   display: flex; flex-direction: column; align-items: center; gap: 2px;
   text-align: center; color: #4a3a24; line-height: 1.3;
 }
-.tcg-type { font-family: var(--ui); letter-spacing: 0.12em; color: #7a6034; font-size: 0.82em; }
+.tcg-type { display: inline-flex; align-items: center; gap: 0.35em; font-family: var(--ui); letter-spacing: 0.12em; color: #7a6034; font-size: 0.82em; }
+/* The kind badge sits on parchment, so it is darkened to read against it. */
+.tcg-kind { width: 1.5em; height: 1.5em; filter: brightness(0.8) contrast(1.15) drop-shadow(0 1px 1px rgba(80, 60, 30, 0.5)); }
 .tcg-count {
   position: absolute; right: 8%; bottom: 5%; z-index: 4;
   padding: 1px 8px; border-radius: 999px;
@@ -931,3 +1006,238 @@ button { font-family: inherit; }
 @keyframes clock-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.62; } }
 .setup-order { font-size: 0.72rem; letter-spacing: 0.08em; opacity: 0.7; }
 .setup-start { min-width: 190px; justify-content: center; }
+
+/* ── Collection state on a card ───────────────────────────────
+   These live after the card block on purpose: they override `.tcg-card.sm`'s
+   own hover filter, which they tie with on specificity. */
+.tcg-card.md { width: 100%; max-width: 176px; }
+.tcg-card.md .tcg-gem { font-size: 0.95rem; }
+.tcg-card.md .tcg-name { font-size: 0.82rem; }
+.tcg-card.md .tcg-text { font-size: 0.6rem; }
+
+/* Unowned cards stay in the pool, greyed: a collection you cannot see gives
+   you nothing to want. */
+.tcg-card.unowned { filter: grayscale(0.85) brightness(0.5); }
+.tcg-card.unowned:hover { transform: translateY(-4px); filter: grayscale(0.55) brightness(0.72); }
+/* How many you own, opposite the ×n copies-in-deck badge. */
+.tcg-stock {
+  position: absolute; left: 7%; bottom: 5%; z-index: 4;
+  padding: 0 6px; border-radius: 999px;
+  font-family: var(--ui); font-weight: 700; font-size: 0.66rem;
+  color: var(--parch); background: rgba(20, 12, 7, 0.86); border: 1px solid var(--frame);
+}
+
+/* ── Deck tray stacks ─────────────────────────────────────────
+   One thumbnail per distinct card with a ×count. A master deck can hold fifty
+   pawns, and fifty identical thumbnails is a scroll bar, not information. */
+.tray-state { font-family: var(--ui); font-size: 0.78rem; font-weight: 700; }
+.tray-state.ok { color: var(--good); }
+.tray-state.warn { color: var(--danger); }
+.tray-stack { position: relative; flex: 0 0 auto; cursor: pointer; }
+.stack-count {
+  position: absolute; right: -4px; bottom: 4px; z-index: 4;
+  padding: 0 6px; border-radius: 999px;
+  font-family: var(--display); font-weight: 700; font-size: 0.68rem;
+  color: #2a1809; background: var(--grad-gold);
+  border: 1px solid var(--gold-dk); box-shadow: 0 2px 5px rgba(0, 0, 0, 0.6);
+}
+.insp-desc { font-size: 0.86rem; line-height: 1.5; }
+.insp-locked {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 10px; text-align: center; color: var(--danger);
+  background: rgba(0, 0, 0, 0.28); border: 1px dashed var(--frame); border-radius: var(--r-sm);
+}
+.insp-hint { font-size: 0.76rem; color: var(--muted); font-style: italic; }
+
+/* ── Pack opening ─────────────────────────────────────────────
+   The cards land one at a time; the order they come out in is the whole point
+   of buying a pack. */
+.pack-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.btn-open { margin-top: 6px; background: var(--grad-gold); color: #2a1809; border-color: var(--gold-lt); text-shadow: 0 1px 0 rgba(255, 244, 210, 0.4); }
+.btn-open:hover { color: #2a1809; filter: brightness(1.06); }
+.pack-overlay {
+  position: fixed; inset: 0; z-index: 60;
+  display: grid; place-items: center; padding: 20px;
+  background: radial-gradient(720px 480px at 50% 42%, rgba(90, 55, 20, 0.6), rgba(10, 6, 4, 0.93));
+  backdrop-filter: blur(3px);
+  animation: fade-in 0.22s ease;
+}
+.pack-overlay.hidden { display: none; }
+.pack-card-wrap { display: flex; flex-direction: column; align-items: center; gap: 18px; max-width: min(96vw, 800px); }
+.pack-title { font-family: var(--display); font-size: 1.25rem; font-weight: 700; color: var(--gold-lt); text-shadow: 0 0 20px rgba(216, 180, 90, 0.45); }
+.pack-cards { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; min-height: 232px; }
+.pack-cards .tcg-card.md { width: 136px; }
+.dealt { animation: deal 0.44s cubic-bezier(0.2, 0.9, 0.3, 1.4); }
+@keyframes deal {
+  from { opacity: 0; transform: translateY(46px) rotate(-9deg) scale(0.78); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ── In-match card UI (skill / master) ────────────────────────
+   Everything under the board: what you can spend, where you are in the turn,
+   what the game is waiting on, and the hand itself. */
+.resource-bar {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 18px;
+  width: min(94vw, 640px); padding: 8px 14px;
+  background: linear-gradient(180deg, #2b1e14, #201610);
+  border: 1px solid var(--frame); border-radius: var(--r-sm); box-shadow: var(--frame-in);
+}
+.resource-bar.hidden { display: none; }
+.res-group { display: flex; align-items: center; gap: 7px; }
+.res-group.opp { margin-left: auto; opacity: 0.82; }
+.res-label { font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.res-value { font-family: var(--display); font-weight: 700; font-size: 0.9rem; color: var(--gold-lt); font-variant-numeric: tabular-nums; }
+/* Ten pips read as a resource at a glance in a way "7 / 10" never does. */
+.cost-pips { display: flex; gap: 3px; }
+.cost-pips i { width: 7px; height: 13px; border-radius: 2px; background: #1a120c; border: 1px solid var(--frame); }
+.cost-pips i.on { background: var(--grad-gold); border-color: var(--gold-lt); box-shadow: 0 0 6px rgba(216, 180, 90, 0.55); }
+
+.phase-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; width: min(94vw, 640px); }
+.phase-bar.hidden { display: none; }
+.phase-chips { display: flex; align-items: center; gap: 12px; }
+.phase-chip {
+  position: relative;
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 11px; border-radius: 999px;
+  font-size: 0.76rem; color: var(--muted);
+  background: rgba(0, 0, 0, 0.3); border: 1px solid var(--frame);
+}
+.phase-icon { width: 1.3em; height: 1.3em; border-radius: 3px; }
+.step-icon { width: 1.5em; height: 1.5em; border-radius: 4px; }
+.phase-chip + .phase-chip::before { content: "›"; position: absolute; left: -10px; color: var(--frame); }
+.phase-chip.active { background: var(--grad-gold); border-color: var(--gold-lt); color: #2a1809; font-weight: 700; }
+.phase-chip.spent { text-decoration: line-through; opacity: 0.5; }
+
+/* The one strip the game actually blocks on — draw choice, counter window. */
+.step-prompt {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px;
+  width: min(94vw, 640px); padding: 10px 16px;
+  background: linear-gradient(180deg, #3a2a1b, #241811);
+  border: 1px solid var(--gold-dk); border-radius: var(--r-sm);
+  box-shadow: 0 0 22px rgba(216, 150, 70, 0.25);
+  animation: fade-in 0.2s ease;
+}
+.step-prompt.hidden { display: none; }
+.step-title { font-family: var(--display); font-weight: 700; color: var(--gold-lt); }
+.step-body { flex: 1; min-width: 170px; font-size: 0.86rem; }
+
+.hand-rail {
+  display: flex; align-items: flex-end; justify-content: center; gap: 8px;
+  width: min(96vw, 780px); min-height: 136px;
+  padding: 10px 4px 12px;
+  overflow-x: auto; overflow-y: hidden;
+}
+.hand-rail.hidden { display: none; }
+.hand-empty { align-self: center; color: var(--muted); font-size: 0.86rem; font-style: italic; }
+.hand-card { flex: 0 0 auto; width: 94px; }
+.tcg-card.hand-card.playable:hover { transform: translateY(-16px) scale(1.08); z-index: 6; }
+/* Unplayable right now, but still yours — dimmed rather than hidden, since the
+   reason it is dimmed is printed on it. */
+.tcg-card.hand-card.blocked { filter: grayscale(0.65) brightness(0.6); cursor: not-allowed; }
+.tcg-card.hand-card.blocked:hover { transform: none; filter: grayscale(0.65) brightness(0.6); }
+.tcg-card.hand-card.casting { transform: translateY(-16px); filter: drop-shadow(0 0 14px var(--gold)); }
+.hand-card.pitchable { outline: 2px dashed var(--danger); outline-offset: 2px; }
+.card-block {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 5;
+  padding: 2px 4px; text-align: center;
+  font-size: 0.56rem; line-height: 1.25; color: #ffd9c8;
+  background: rgba(20, 10, 6, 0.86); border-top: 1px solid var(--frame);
+}
+/* A passive the opponent has in play, in the strip above the board. */
+.opp-card.lasting { background: #24331d; border-color: #4c6032; color: #cfe6a8; }
+
+/* Cards add four rows under the board, so in those modes the board is bounded
+   by the viewport height as well as its width — otherwise the hand falls off
+   the bottom of the screen. Classic keeps the full-size board. */
+.chess-screen { overflow-y: auto; }
+.chess-screen:has(.hand-rail:not(.hidden)) .board-wrap { width: min(94vw, 640px, 46vh); }
+
+/* ── The action feed ──────────────────────────────────────────
+   Cards resolve in a single reducer step, so without a running commentary the
+   only evidence that anything happened is the board quietly changing. */
+.action-log {
+  width: min(94vw, 640px);
+  display: flex; flex-direction: column; gap: 2px;
+  min-height: 1.2em;
+  font-size: 0.78rem; line-height: 1.45;
+  color: var(--muted);
+}
+.log-line {
+  padding: 2px 8px; border-left: 2px solid var(--frame); border-radius: 2px;
+  background: rgba(0, 0, 0, 0.22);
+  animation: log-in 0.25s ease;
+}
+.log-line.play { color: var(--gold-lt); border-left-color: var(--gold); }
+.log-line.summon { color: #cfe6a8; border-left-color: #4c6032; }
+.log-line.draw { color: var(--parch-2); }
+.log-line.destroy { color: #ffc0aa; border-left-color: #6d3527; }
+.log-line.dice { color: var(--arcane); border-left-color: var(--arcane); }
+.log-line.over { color: var(--ember); border-left-color: var(--ember); font-weight: 700; }
+@keyframes log-in { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: none; } }
+
+/* The card that was just played, held over the board long enough to read. */
+.play-flash {
+  position: absolute; inset: 0; z-index: 12;
+  display: grid; place-items: center;
+  pointer-events: none;
+}
+.play-flash.hidden { display: none; }
+.flash-card {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 14px 18px; border-radius: var(--r);
+  background: radial-gradient(circle at 50% 40%, rgba(60, 40, 18, 0.92), rgba(12, 8, 5, 0.86));
+  border: 1px solid var(--gold-dk);
+  box-shadow: 0 0 40px rgba(216, 150, 70, 0.45);
+  animation: flash-in 1.4s ease both;
+}
+.flash-card .tcg-card.md { width: 148px; }
+.flash-who { font-family: var(--display); font-size: 0.82rem; letter-spacing: 0.08em; color: var(--gold-lt); }
+.flash-card.theirs { border-color: #6d3527; box-shadow: 0 0 40px rgba(200, 80, 50, 0.4); }
+@keyframes flash-in {
+  0% { opacity: 0; transform: scale(0.7) rotate(-6deg); }
+  18% { opacity: 1; transform: scale(1.04) rotate(0deg); }
+  76% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.06) translateY(-14px); }
+}
+
+/* ── Card preview ("take a closer look") ──────────────────────
+   The card played for real in a sandbox match, before and after. */
+.preview-overlay {
+  position: fixed; inset: 0; z-index: 70;
+  display: grid; place-items: center; padding: 20px;
+  background: rgba(8, 5, 3, 0.82);
+  backdrop-filter: blur(3px);
+  animation: fade-in 0.2s ease;
+}
+.preview-card {
+  width: min(96vw, 860px); max-height: 92vh; overflow-y: auto;
+  padding: 22px 24px;
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
+}
+.preview-head { display: flex; align-items: flex-start; gap: 18px; width: 100%; }
+.preview-head .tcg-card.md { flex: 0 0 auto; width: 160px; }
+.preview-head-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.preview-name { margin: 0; font-family: var(--display); font-size: 1.3rem; color: var(--gold-lt); }
+.preview-kind { font-size: 0.8rem; color: var(--gold); }
+.preview-desc { margin: 0; font-size: 0.92rem; line-height: 1.55; }
+.preview-boards { display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; }
+.preview-pane { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.preview-label { font-size: 0.74rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.preview-board {
+  width: min(38vw, 300px); aspect-ratio: 1;
+  border: 1px solid var(--frame); border-radius: 8px;
+  box-shadow: inset 0 0 0 1px rgba(216, 180, 90, 0.15), 0 8px 22px rgba(0, 0, 0, 0.55);
+}
+.preview-arrow { font-size: 1.6rem; color: var(--gold); }
+.preview-stats { display: flex; flex-direction: column; gap: 2px; font-size: 0.78rem; color: var(--muted); text-align: center; }
+.preview-note { font-size: 0.8rem; color: var(--muted); font-style: italic; }
+.preview-empty { padding: 28px; color: var(--muted); font-style: italic; text-align: center; }
+@media (max-width: 720px) {
+  .preview-head { flex-direction: column; align-items: center; text-align: center; }
+  .preview-board { width: min(78vw, 300px); }
+  .preview-arrow { transform: rotate(90deg); }
+}
+
+.hand-rail::-webkit-scrollbar { height: 9px; }
+.hand-rail::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.3); border-radius: 999px; }
+.hand-rail::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #6d5226, #46331a); border-radius: 999px; border: 1px solid var(--frame); }

@@ -52,13 +52,22 @@ export function tPassthrough(text: string): string {
 export const skillName = (id: string) => pick(SKILL_NAME, id);
 export const skillDesc = (id: string) => pick(SKILL_DESC, id);
 
+/**
+ * Names and rules text for any card id, skill or piece. Screens that show cards
+ * — the deck builder, the hand, the shop — never need to know which kind they
+ * are holding, so they call these rather than branching themselves.
+ */
+export const cardName = (id: string) =>
+  id.startsWith("piece:") ? pick(PIECE_CARD_NAME, id) : skillName(id);
+export const cardDesc = (id: string) =>
+  id.startsWith("piece:") ? pick(PIECE_CARD_DESC, id) : skillDesc(id);
+
 function pick(table: Record<string, Entry>, id: string): string {
   const e = table[id];
   return e ? (current === "ko" ? e[1] : e[0]) : id;
 }
 
 const STRINGS = {
-  // menu
   "menu.single": ["Single Play", "혼자 하기"],
   "menu.online": ["Online", "온라인"],
   "menu.deck": ["Deck Builder", "덱 만들기"],
@@ -69,8 +78,6 @@ const STRINGS = {
   "nav.home": ["Home", "홈"],
   "nav.profile": ["Profile", "내 정보"],
   "nav.shop": ["Shop", "상점"],
-
-  // common
   "common.back": ["← Back", "← 뒤로"],
   "common.leave": ["← Leave", "← 나가기"],
   "common.cancel": ["← Cancel", "← 취소"],
@@ -80,12 +87,25 @@ const STRINGS = {
   "common.save": ["Save", "저장"],
   "common.soon": ["Soon", "준비중"],
   "common.password": ["Password", "비밀번호"],
-
-  // game picker
+  "mode.title": ["Select Mode", "모드 선택"],
+  "mode.hint": ["Pick how you want to play chess", "체스를 어떤 방식으로 즐길지 고르세요"],
+  "mode.deckNeeded": ["Deck not ready", "덱 미완성"],
+  "mode.deckReady": ["Deck ready", "덱 준비 완료"],
+  "mode.buildDeck": ["Build deck", "덱 만들기"],
+  "mode.deckShort": [
+    "Your {mode} deck needs exactly {want} cards — it has {have}.",
+    "{mode} 덱은 정확히 {want}장이어야 해요 — 현재 {have}장.",
+  ],
+  "mode.board": ["Board", "보드"],
+  "mode.deck": ["Deck", "덱"],
+  "mode.noDeck": ["No deck", "덱 없음"],
   "picker.title": ["Select Game", "게임 선택"],
   "picker.select": ["Select", "선택"],
   "picker.hint": ["← → to browse, tap the center card to start", "← → 로 넘기고, 가운데 카드를 눌러 시작"],
-  "picker.soon": ["This game is still in the works — chess is playable now", "아직 준비중인 게임입니다 — 지금은 체스만 플레이할 수 있어요"],
+  "picker.soon": [
+    "This game is still in the works — chess is playable now",
+    "아직 준비중인 게임입니다 — 지금은 체스만 플레이할 수 있어요",
+  ],
   "setup.difficulty": ["Difficulty", "난이도"],
   "setup.side": ["Your Side", "진영"],
   "setup.start": ["Start", "시작"],
@@ -110,8 +130,6 @@ const STRINGS = {
   "setup.depth": ["Looks ahead up to", "내다보는 수"],
   "countdown.ready": ["GET READY", "준비"],
   "countdown.go": ["GO!", "시작!"],
-
-  // online
   "multi.title": ["Online", "온라인 대전"],
   "multi.quick": ["Quick Match", "퀵스타트"],
   "multi.create": ["Create Room", "방 만들기"],
@@ -123,6 +141,7 @@ const STRINGS = {
   "room.passwordOptional": ["Password (optional — empty = public)", "비밀번호 (선택 — 비우면 공개방)"],
   "room.passwordIfAny": ["Password (if any)", "비밀번호 (있는 경우)"],
   "room.game": ["Game", "게임"],
+  "room.mode": ["Mode", "모드"],
   "room.hostNote": ["The host plays white and moves first.", "호스트가 백(선공)으로 시작합니다."],
   "room.create": ["Create room", "방 만들기"],
   "room.waitingTitle": ["Waiting Room", "방 대기실"],
@@ -138,13 +157,12 @@ const STRINGS = {
   "room.refresh": ["Refresh", "새로고침"],
   "room.none": ["No open rooms. Try creating one!", "열린 방이 없습니다. 방을 만들어 보세요!"],
   "room.needCode": ["Enter an invite code", "초대코드를 입력하세요"],
-
-  // net
   "net.unreachable": ["Can't reach the server", "서버에 연결할 수 없습니다"],
-  "net.unreachableHint": ["Can't reach the server — run `pnpm server` first", "서버에 연결할 수 없습니다 — `pnpm server` 실행이 필요합니다"],
+  "net.unreachableHint": [
+    "Can't reach the server — run `pnpm server` first",
+    "서버에 연결할 수 없습니다 — `pnpm server` 실행이 필요합니다",
+  ],
   "net.closed": ["Connection closed", "연결이 종료되었습니다"],
-
-  // in game
   "game.yourTurn": ["Your turn", "당신 차례"],
   "game.oppTurn": ["Opponent's turn…", "상대 차례…"],
   "game.you": ["You", "나"],
@@ -165,13 +183,52 @@ const STRINGS = {
   "skill.alwaysOn": ["Always on", "상시"],
   "skill.spent": ["Spent", "소진"],
   "skill.ready": ["Ready", "발동 가능"],
-
-  // quoridor controls
+  "play.hand": ["Hand", "손패"],
+  "play.cost": ["Cost", "코스트"],
+  "play.deckLeft": ["Deck", "덱"],
+  "play.discard": ["Discard", "버린 카드"],
+  "play.inPlay": ["In play", "지속 효과"],
+  "play.phaseDraw": ["Draw", "드로우"],
+  "play.phaseSummon": ["Summon", "소환"],
+  "play.phaseSkill": ["Skills", "스킬"],
+  "play.phaseMove": ["Move", "이동"],
+  "play.next": ["Next step", "다음 단계"],
+  "play.speedNormal": ["Normal", "일반"],
+  "play.speedQuick": ["Quick", "속공"],
+  "play.speedCounter": ["Counter", "대응"],
+  "play.moveSpent": [
+    "You played a normal card — no piece move this turn.",
+    "일반 카드를 사용해 이번 턴에는 기물을 움직일 수 없어요.",
+  ],
+  "play.tooExpensive": ["Not enough cost", "코스트 부족"],
+  "play.counterOnly": ["Played on the opponent's turn", "상대 턴에 발동"],
+  "play.summonSick": ["Summoned this turn", "이번 턴 소환됨"],
+  "draw.title": ["Your hand is full", "손패가 가득 찼어요"],
+  "draw.body": [
+    "You hold {n} cards. Skip the draw, or draw one and pitch one.",
+    "카드 {n}장을 들고 있어요. 드로우를 건너뛰거나, 뽑고 한 장을 버리세요.",
+  ],
+  "draw.skip": ["Skip the draw", "드로우 건너뛰기"],
+  "draw.take": ["Draw, then discard", "뽑고 버리기"],
+  "draw.pick": ["Pick a card to discard", "버릴 카드를 고르세요"],
+  "summon.pick": ["Pick a square in your summoning zone", "소환 구역의 칸을 고르세요"],
+  "summon.zone": ["Your back three ranks", "자신의 뒤쪽 3줄"],
+  "summon.cannotMove": [
+    "A piece summoned this turn cannot move until your next turn.",
+    "이번 턴에 소환한 기물은 다음 턴부터 움직일 수 있어요.",
+  ],
+  "counter.title": ["Respond?", "대응할까요?"],
+  "counter.body": ["The opponent's action can be answered with a counter card.", "상대의 행동에 대응 카드를 발동할 수 있어요."],
+  "counter.pass": ["Let it happen", "그냥 넘기기"],
+  "counter.waiting": ["Opponent is deciding whether to respond…", "상대가 대응 여부를 고르는 중…"],
+  "counter.trigMove": ["they moved a piece", "상대가 기물을 움직였습니다"],
+  "counter.trigCapture": ["they captured a piece", "상대가 기물을 잡았습니다"],
+  "counter.trigSkill": ["they played a skill card", "상대가 스킬 카드를 냈습니다"],
+  "counter.trigSummon": ["they summoned a piece", "상대가 기물을 소환했습니다"],
+  "counter.trigCheck": ["they put your king in check", "상대가 체크를 걸었습니다"],
   "quoridor.move": ["🚶 Move", "🚶 이동"],
   "quoridor.hwall": ["▬ H wall", "▬ 가로 벽"],
   "quoridor.vwall": ["▮ V wall", "▮ 세로 벽"],
-
-  // deck builder
   "deck.title": ["Deck Builder", "덱 만들기"],
   "deck.save": ["Save deck", "덱 저장"],
   "deck.saved": ["Saved ✓", "저장됨 ✓"],
@@ -181,16 +238,46 @@ const STRINGS = {
   "deck.all": ["All", "전체"],
   "deck.active": ["Active", "액티브"],
   "deck.passive": ["Passive", "패시브"],
+  "deck.enchant": ["Enchant", "부여"],
+  "deck.lasting": ["Lasting", "지속"],
+  "deck.detail": ["Take a closer look", "자세히 보기"],
+  "kind.normal": ["Normal", "일반"],
+  "kind.quick": ["Quick", "속공"],
+  "kind.enchant": ["Enchant", "부여"],
+  "kind.lasting": ["Lasting", "지속"],
+  "kind.counter": ["Counter", "대응"],
+  "kind.normalNote": ["Uses your piece move for the turn", "사용하면 그 턴에 기물을 움직일 수 없음"],
+  "kind.quickNote": ["Play it and still move a piece", "코스트만 있으면 기물도 움직일 수 있음"],
+  "kind.enchantNote": ["Sticks to a piece until dispelled", "기물에 효과를 부여. 해제 전까지 유지"],
+  "kind.lastingNote": ["Stays in play until destroyed", "파괴되기 전까지 효과가 유지됨"],
+  "kind.counterNote": ["Held in hand, fired on their turn", "패에 든 채 상대 행동에 반응해 발동"],
+  "log.played": ["{who} played {card}", "{who} — {card} 사용"],
+  "log.summoned": ["{who} summoned {card}", "{who} — {card} 소환"],
+  "log.drew": ["{who} drew {card}", "{who} — {card} 뽑음"],
+  "log.drewHidden": ["{who} drew a card", "{who} — 카드 1장 뽑음"],
+  "log.destroyed": ["{card} was destroyed", "{card} 파괴됨"],
+  "log.dice": ["{who} rolled {n}", "{who} — 주사위 {n}"],
+  "preview.before": ["Before", "사용 전"],
+  "preview.after": ["After", "사용 후"],
+  "preview.none": ["This card has no board effect to show.", "이 카드는 판 위에 보여줄 변화가 없습니다."],
   "deck.cost": ["Cost", "코스트"],
   "deck.type": ["Type", "종류"],
-  "deck.cooldown": ["Cooldown", "쿨타임"],
-  "deck.uses": ["Uses", "사용"],
+  "deck.speed": ["Speed", "속도"],
+  "deck.owned": ["Owned", "보유"],
+  "deck.skills": ["Skill cards", "스킬 카드"],
+  "deck.pieces": ["Piece cards", "기물 카드"],
+  "deck.notOwned": ["You don't own this card yet", "아직 보유하지 않은 카드예요"],
+  "deck.getInShop": ["Get it in the shop", "상점에서 구할 수 있어요"],
   "deck.rules": [
-    "Hand {hand} · {min} min · {byo}s byoyomi · max {copies} copies — card effects coming soon",
-    "손패 {hand}장 · {min}분 · 초읽기 {byo}초 · 같은 카드 최대 {copies}장 — 카드 효과는 준비 중",
+    "{size}-card deck · max {skillCopies} of a skill, {pieceCopies} of a piece",
+    "{size}장 덱 · 스킬 최대 {skillCopies}장, 기물 최대 {pieceCopies}장",
   ],
-
-  // profile / shop / options
+  "deck.full": ["Deck is full", "덱이 가득 찼어요"],
+  "deck.autofill": ["Auto-fill", "자동 채우기"],
+  "deck.clear": ["Clear", "비우기"],
+  "deck.short": ["{n} more to go", "{n}장 더 필요"],
+  "deck.over": ["{n} too many", "{n}장 초과"],
+  "deck.complete": ["Ready to play", "출전 준비 완료"],
   "profile.title": ["Profile", "내 정보"],
   "profile.edit": ["Edit name", "닉네임 수정"],
   "profile.cancelEdit": ["Cancel", "취소"],
@@ -205,22 +292,61 @@ const STRINGS = {
   "profile.soon": ["Stats and ranking are coming soon.", "전적·랭킹 시스템은 준비 중입니다."],
   "shop.title": ["Shop", "상점"],
   "shop.pieces": ["Piece Cards", "기물 카드"],
+  "shop.packs": ["Skill Card Packs", "스킬 카드팩"],
   "shop.other": ["Coming Soon", "출시 예정"],
-  "shop.piecesNote": [
-    "Collect up to {max} copies of each piece.",
-    "기물마다 최대 {max}개까지 모을 수 있어요.",
-  ],
+  "shop.piecesNote": ["Collect up to {max} copies of each piece.", "기물마다 최대 {max}개까지 모을 수 있어요."],
+  "shop.packsNote": ["Each pack opens into {n} random skill cards.", "카드팩 하나를 열면 스킬 카드 {n}장이 랜덤으로 나와요."],
   "shop.pieceCard": ["Collectible piece card", "수집형 기물 카드"],
   "shop.full": ["Collection full", "보유 한도 도달"],
   "shop.bought": ["{name} bought — you now hold {n}.", "{name} 구매 완료 — 이제 {n}개 보유."],
   "shop.atCap": ["You already hold {max} of those.", "이미 {max}개를 보유하고 있어요."],
   "shop.tooPoor": ["Not enough coins.", "코인이 부족합니다."],
-  "shop.soon": ["The shop opens alongside the card deck system.", "상점은 카드 덱 시스템과 함께 열립니다."],
+  "shop.soon": ["More of the storefront opens up as the game grows.", "상점의 나머지 품목은 순차적으로 열립니다."],
+  "shop.buy": ["Buy", "구매"],
+  "shop.open": ["Open", "열기"],
+  "shop.unopened": ["{n} unopened", "미개봉 {n}개"],
+  "shop.packBought": ["Pack bought — open it below.", "카드팩 구매 완료 — 아래에서 열어보세요."],
+  "shop.packResult": ["You pulled {n} cards", "카드 {n}장을 획득했어요"],
+  "shop.packDone": ["Nice!", "확인"],
+  "shop.newCard": ["NEW", "NEW"],
+  "shop.starterGranted": [
+    "Welcome! You've been given a full chess set of piece cards and a skill pack.",
+    "환영합니다! 체스 한 세트 분량의 기물 카드와 스킬 카드팩 1개를 드렸어요.",
+  ],
   "option.title": ["Option", "설정"],
   "option.sound": ["Sound", "사운드"],
   "option.boardTheme": ["Board theme", "보드 테마"],
   "option.language": ["Language", "언어"],
   "option.comingSoon": ["Coming soon", "준비중"],
+  "option.coupon": ["Coupon code", "쿠폰번호"],
+  "option.couponPlaceholder": ["Enter a code", "쿠폰번호 입력"],
+  "option.couponRedeem": ["Redeem", "사용"],
+  "option.couponOk": ["+{coins} coins! You now have {total}.", "{coins}원 지급! 현재 {total}원."],
+  "option.couponBad": ["That code is not valid.", "사용할 수 없는 쿠폰번호입니다."],
+  "option.couponUsed": ["That code has already been used.", "이미 사용한 쿠폰번호입니다."],
+  "play.oneSkill": ["One skill card a turn", "턴당 스킬 1장"],
+  "play.targeting": ["Another card is waiting", "다른 카드가 대상을 기다리는 중"],
+  "play.freeMoves": ["Move a piece — {n} left, no captures", "기물을 움직이세요 — {n}회 남음, 공격 불가"],
+  "play.arrange": ["Put these back — first click goes on top", "덱에 되돌릴 순서 — 먼저 누른 카드가 맨 위"],
+  "play.discardEmpty": ["Nothing in the discard pile", "버린 카드가 없습니다"],
+  "target.pick": ["pick a target", "대상을 고르세요"],
+  "target.own": ["pick one of your pieces", "내 기물을 고르세요"],
+  "target.enemy": ["pick an enemy piece", "적 기물을 고르세요"],
+  "target.empty": ["pick an empty square", "빈 칸을 고르세요"],
+  "target.ownHand": ["pick a card in your hand", "손패에서 고르세요"],
+  "target.oppHand": ["pick a card in their hand", "상대 손패에서 고르세요"],
+  "target.discard": ["pick a card from your discard pile", "버린 카드에서 고르세요"],
+  "target.lasting": ["pick a lasting card in play", "발동 중인 지속 카드를 고르세요"],
+  "target.choice": ["choose", "선택하세요"],
+  "target.done": ["That's enough", "이걸로 충분"],
+  "option.king-side": ["King side", "킹 쪽"],
+  "option.queen-side": ["Queen side", "퀸 쪽"],
+  "option.n": ["Knight", "나이트"],
+  "option.b": ["Bishop", "비숍"],
+  "option.r": ["Rook", "룩"],
+  "counter.trigCheckmate": ["your king is being mated", "킹이 체크메이트 당하는 중입니다"],
+  "counter.trigTerrain": ["your piece walked into terrain", "기물이 지형 효과에 걸렸습니다"],
+  "counter.trigEnchant": ["they aimed an enchant at you", "상대가 부여를 걸려 합니다"],
 } as const satisfies Record<string, Entry>;
 
 /** Text produced outside the client (server replies, engine events, results). */
@@ -242,6 +368,50 @@ const PASSTHROUGH = {
   "titan-crush": ["Crushed by the Titan", "거신병에게 짓밟힘"],
   "titan-explode": ["The Titan exploded", "거신병 폭발"],
 } as const satisfies Record<string, Entry>;
+
+export const MODE_NAME: Record<string, Entry> = {
+  classic: ["Classic", "클래식"],
+  skill: ["Skill", "스킬"],
+  master: ["Master", "마스터"],
+};
+export const MODE_TAGLINE: Record<string, Entry> = {
+  classic: ["Chess, exactly as you know it", "우리가 아는 그 체스"],
+  skill: ["Chess plus a 30-card skill deck", "체스 + 스킬 카드 30장 덱"],
+  master: ["King and two pawns. Build the rest.", "킹과 폰 2개로 시작해 나머지는 소환"],
+};
+export const MODE_DESC: Record<string, Entry> = {
+  classic: [
+    "The standard 8x8 game. No cards, no cost, no skills — just chess.",
+    "8x8 표준 체스. 카드도 코스트도 스킬도 없는 순수한 체스입니다.",
+  ],
+  skill: [
+    "The standard 8x8 game, but each side also plays a 30-card skill deck. Draw one card a turn, bank one cost a turn, and bend the rules.",
+    "8x8 체스에 스킬 카드 30장 덱이 더해집니다. 턴마다 1장 드로우, 코스트 1 충전으로 규칙을 비틀어 보세요.",
+  ],
+  master: [
+    "A 10x10 board. You open with a king and two pawns, and summon your whole army out of a 50-card deck of pieces and skills.",
+    "10x10 보드. 킹과 폰 2개로 시작해 기물·스킬 50장 덱에서 군대를 직접 소환합니다.",
+  ],
+};
+export const modeName = (id: string) => pick(MODE_NAME, id);
+export const modeTagline = (id: string) => pick(MODE_TAGLINE, id);
+export const modeDesc = (id: string) => pick(MODE_DESC, id);
+
+/** Piece cards are named after the piece they summon, not after a skill. */
+const PIECE_CARD_NAME: Record<string, Entry> = {
+  "piece:p": ["Pawn", "폰"],
+  "piece:n": ["Knight", "나이트"],
+  "piece:b": ["Bishop", "비숍"],
+  "piece:r": ["Rook", "룩"],
+  "piece:q": ["Queen", "퀸"],
+};
+const PIECE_CARD_DESC: Record<string, Entry> = {
+  "piece:p": ["Summon a pawn into your back three ranks.", "뒤쪽 3줄에 폰을 소환한다."],
+  "piece:n": ["Summon a knight into your back three ranks.", "뒤쪽 3줄에 나이트를 소환한다."],
+  "piece:b": ["Summon a bishop into your back three ranks.", "뒤쪽 3줄에 비숍을 소환한다."],
+  "piece:r": ["Summon a rook into your back three ranks.", "뒤쪽 3줄에 룩을 소환한다."],
+  "piece:q": ["Summon a queen into your back three ranks.", "뒤쪽 3줄에 퀸을 소환한다."],
+};
 
 export const GAME_NAME: Record<string, Entry> = {
   chess: ["Chess", "체스"],
@@ -276,104 +446,217 @@ export const shopItem = (id: string) => pick(SHOP_ITEM, id);
 export const shopDesc = (id: string) => pick(SHOP_DESC, id);
 
 const SKILL_NAME: Record<string, Entry> = {
-  retreat: ["Retreat", "물러서기"],
-  "cross-diagonal": ["Cross & Diagonal", "십자와 대각"],
-  "raid-march": ["Raid March", "기습 행군"],
-  chaos: ["Chaos", "혼란"],
+  scout: ["Scout", "정찰"],
+  spy: ["Spy", "밀정"],
+  divination: ["Divination", "점술"],
+  meditate: ["Meditate", "명상"],
+  offering: ["Offering", "헌납"],
+  disguise: ["Disguise", "위장"],
+  readiness: ["Readiness", "준비 태세"],
+  bait: ["Bait", "미끼"],
+  "small-sandbag": ["Small Sandbag", "작은 모래주머니"],
+  vigilance: ["Vigilance", "경계"],
+  dash: ["Dash", "질주"],
+  shove: ["Shove", "밀쳐내기"],
+  pull: ["Pull", "끌어당기기"],
+  leap: ["Leap", "도약"],
+  swamp: ["Swamp", "늪지"],
+  "small-shield": ["Small Shield", "작은 방패"],
+  clairvoyance: ["Clairvoyance", "천리안"],
+  herald: ["Herald", "전령"],
+  javelin: ["Javelin", "투창"],
+  citadel: ["Citadel", "성채"],
+  "large-sandbag": ["Large Sandbag", "큰 모래주머니"],
+  beacon: ["Beacon", "봉화"],
+  insight: ["Insight", "간파"],
+  ward: ["Ward", "방어"],
+  cleanse: ["Cleanse", "해주"],
+  unbind: ["Unbind", "해금"],
+  recall: ["Recall", "회수"],
+  coerce: ["Coerce", "강제"],
+  transpose: ["Transpose", "전환"],
+  "guard-drill": ["Guard Drill", "위병 훈련"],
+  disarm: ["Disarm", "무장해제"],
+  mine: ["Mine", "지뢰"],
+  hallucination: ["Hallucination", "환각"],
+  espionage: ["Espionage", "첩보"],
+  evade: ["Evade", "회피"],
+  sever: ["Sever", "끊어내기"],
+  double: ["Double", "더블"],
+  "blood-price": ["Blood Price", "희생의 대가"],
+  promotion: ["Promotion", "승진"],
+  "double-image": ["Double Image", "분신"],
+  "kings-strike": ["King's Strike", "비장의 한방"],
+  rewind: ["Rewind", "무르기"],
+  thrift: ["Thrift", "절약"],
+  riposte: ["Riposte", "받아치기"],
+  "last-stand": ["Last Stand", "최후의 저항"],
+  shatter: ["Shatter", "파괴"],
+  exchange: ["Exchange", "교환"],
+  awaken: ["Awaken", "각성"],
+  brainwash: ["Brainwash", "세뇌"],
+  "bond-chain": ["Bond Chain", "동맹사슬"],
+  "fate-chain": ["Fate Chain", "운명의 사슬"],
   "agile-knight": ["Agile Knight", "민첩한 나이트"],
-  foresight: ["Foresight", "선견지명"],
-  "iron-guard": ["Iron Guard", "철벽 방어"],
-  "sacrifice-pact": ["Sacrifice Pact", "희생의 계약"],
-  phantom: ["Phantom", "유령 기물"],
-  teleport: ["Teleport", "순간이동"],
-  cloak: ["Cloak", "은폐"],
-  "loyal-vassal": ["Loyal Vassal", "용맹한 신하"],
-  undo: ["Undo", "무르기"],
-  "one-more": ["One More", "한번 더"],
-  "revive-gamble": ["Revive (Gambler)", "부활 (도박)"],
-  "evolve-gamble": ["Evolve (Gambler)", "진화 (도박)"],
-  "peasant-revolt": ["Peasant Revolt", "농민 봉기"],
-  "kings-return": ["King's Return", "왕의 귀환"],
-  "titan-fusion": ["Fusion (Titan)", "융합 (거신병)"],
-  liberation: ["Liberation", "해방"],
+  "muddy-water": ["Muddy Water", "흙탕물"],
+  bodyguard: ["Bodyguard", "보디가드"],
+  pandemonium: ["Pandemonium", "대혼란"],
+  assassinate: ["Assassinate", "암살"],
+  regicide: ["Queenslayer", "여왕암살"],
+  sanctuary: ["Sanctuary", "성역"],
+  plague: ["Plague", "역병"],
+  "purifying-light": ["Purifying Light", "정화의 빛"],
+  typhoon: ["Typhoon", "태풍"],
+  earthquake: ["Earthquake", "지진"],
+  "gambling-den": ["Gambling Den", "도박장"],
 };
 
 const SKILL_DESC: Record<string, Entry> = {
-  retreat: [
-    "Move a pawn one square back, left or right. Uses your turn.",
-    "폰을 뒤·좌·우로 한 칸 옮긴다. 턴 소모.",
+  scout: ["Look at one card in the opponent's hand.", "상대 패 1장을 확인한다."],
+  spy: ["Look at the top card of their deck.", "상대 덱 맨 위 1장을 확인한다."],
+  divination: [
+    "Look at the top 3 of your deck and put them back in any order.",
+    "내 덱 맨 위 3장을 보고 원하는 순서로 되돌린다.",
   ],
-  "cross-diagonal": [
-    "Move a bishop 1 square orthogonally, or a rook 1 square diagonally (may capture). Uses your turn.",
-    "비숍은 직선, 룩은 대각으로 한 칸(포획 가능). 턴 소모.",
+  meditate: ["Draw 2 cards (up to a hand of 5).", "카드 2장을 뽑는다 (패 5장 초과 불가)."],
+  offering: ["Discard a card, then draw 2.", "패 1장을 버리고 2장을 뽑는다."],
+  disguise: [
+    "Shuffle up to 2 cards from hand into your deck, then draw that many.",
+    "패에서 최대 2장을 덱에 넣고 섞은 뒤, 넣은 만큼 뽑는다.",
   ],
-  "raid-march": [
-    "Move one piece 1 square ignoring its move rules. It can't be captured this turn. Does not use your turn.",
-    "기물 하나를 규칙 무시하고 한 칸. 이번 턴 포획 불가. 턴 유지.",
+  readiness: ["+2 cost this turn.", "이번 턴 코스트 +2."],
+  bait: ["Mark one of your pawns: when it dies, draw 2.", "내 폰 1개에 부여. 이 폰이 파괴되면 2장 드로우."],
+  "small-sandbag": [
+    "Weigh an enemy piece down for 2 of your turns (not the king).",
+    "적 기물 1개에 모래주머니. 자신 턴 기준 2턴 지속 (킹 제외).",
   ],
-  chaos: [
-    "For the rest of the game both sides' rooks and bishops swap roles (bishop = orthogonal, rook = diagonal).",
-    "게임 내내 양측 룩·비숍의 이동이 뒤바뀐다.",
+  vigilance: ["Counter: when they play a card, draw 1.", "대응 — 상대가 카드를 사용하면 1장 드로우."],
+  dash: ["Move one of your pieces a square. It cannot capture.", "내 기물 1개를 한 칸 이동. 공격 불가."],
+  shove: ["Push an adjacent enemy one square straight back.", "인접한 적 기물 1개를 반대 방향으로 1칸 밀어낸다."],
+  pull: [
+    "Drag an enemy on your piece's line up to the square in front of it.",
+    "같은 직선상의 적 기물 1개를 내 기물 바로 앞으로 끌어온다.",
   ],
-  "agile-knight": [
-    "Knights may also move like a Janggi elephant: forward-diagonal-diagonal (normal moves still allowed).",
-    "나이트가 장기 상처럼 앞-대각-대각으로도 움직인다.",
+  leap: ["For 3 of your turns, this pawn moves over other pieces.", "내 폰 1개에 부여. 자신 턴 기준 3턴간 다른 기물을 뛰어넘는다."],
+  swamp: [
+    "Mark an empty square: whatever steps in cannot move next turn.",
+    "빈 칸 1개를 지정. 그 칸에 들어온 기물은 다음 턴 이동 불가.",
   ],
-  foresight: [
-    "Point at one of the opponent's skill cards to reveal what it is.",
-    "상대 스킬 카드 한 장을 지목해 확인한다.",
+  "small-shield": ["Counter: turn away one attack on a pawn of yours.", "대응 — 내 폰을 노린 공격 1회를 무효화한다."],
+  clairvoyance: ["See the opponent's whole hand.", "상대 패를 전부 확인한다."],
+  herald: ["Shuffle a spent or destroyed card back into your deck.", "파괴·사용한 카드 1장을 덱에 넣고 섞는다."],
+  javelin: [
+    "Throw a pawn beside your king: it and the first enemy on that line both die.",
+    "킹 옆의 폰을 던진다. 그 방향 일직선의 적 1개와 폰이 함께 파괴된다.",
   ],
-  "iron-guard": [
-    "Pick one piece other than the king. It can't be attacked until your next turn begins.",
-    "킹 외 기물 하나가 내 다음 턴까지 공격받지 않는다.",
+  citadel: ["Castle immediately, ignoring the usual conditions.", "조건을 무시하고 캐슬링을 즉시 실행한다."],
+  "large-sandbag": [
+    "Weigh an enemy piece down for 5 of your turns (not the king).",
+    "적 기물 1개에 모래주머니. 자신 턴 기준 5턴 지속 (킹 제외).",
   ],
-  "sacrifice-pact": [
-    "Destroy one of your pieces to move three pieces instead (those pieces can't capture this turn).",
-    "내 기물 하나를 잃고 기물 3개를 움직인다(포획 불가).",
+  beacon: ["Lasting: draw a card whenever a piece of yours dies.", "지속 — 내 기물이 파괴될 때마다 1장 드로우."],
+  insight: ["Counter: undo a quick or counter card they played.", "대응 — 상대가 쓴 속공 또는 대응 카드 1장을 무효화한다."],
+  ward: ["Counter: shrug off a terrain effect once.", "대응 — 지형 효과(늪지·지뢰 등)를 1회 무효화한다."],
+  cleanse: ["Lift the enchants off one of your own pieces.", "부여마법에 걸린 내 기물 1개의 부여를 해제한다."],
+  unbind: ["Lift the enchants off one enemy piece.", "부여마법에 걸린 적 기물 1개의 부여를 해제한다."],
+  recall: ["Take a spent or destroyed card back into your hand.", "파괴·사용한 카드 1장을 패로 회수한다."],
+  coerce: ["Send 2 cards from their hand back into their deck.", "상대 패에서 2장을 골라 덱으로 되돌린다."],
+  transpose: ["Swap two of your pieces (not the king).", "킹을 제외한 내 기물 2개의 위치를 맞바꾼다."],
+  "guard-drill": [
+    "This pawn moves one square in any direction and may capture.",
+    "내 폰 1개에 부여. 1칸 이내 어디로든 이동하고 적을 잡을 수 있다.",
   ],
-  phantom: [
-    "All your pieces except the king may jump over allies within their range (not over enemies). Uses your turn.",
-    "킹 외 기물이 아군을 뛰어넘는다(적은 불가). 턴 소모.",
+  disarm: [
+    "For 5 of their turns this piece may move but not capture.",
+    "적 기물 1개에 부여. 상대 턴 기준 5턴간 기물을 잡을 수 없다.",
   ],
-  teleport: [
-    "Swap the positions of two of your pieces (not the king). Uses your turn and ends it.",
-    "킹 외 기물 둘의 위치를 맞바꾼다. 턴 소모.",
+  mine: [
+    "Hide a mine on an empty square. It kills what steps on it (a king only turns back).",
+    "빈 칸에 비공개 설치. 적 기물이 밟으면 파괴 (킹은 이동만 취소).",
   ],
-  cloak: [
-    "For 5 turns all your pieces look like pawns to the opponent.",
-    "5턴 동안 내 기물이 상대에게 폰으로 보인다.",
+  hallucination: [
+    "For 5 of your turns every piece looks like a pawn to them.",
+    "자신 턴 기준 5턴간 상대에게는 모든 기물이 폰으로 보인다.",
   ],
-  "loyal-vassal": [
-    "When your king would be taken and a pawn is alive, they swap places and the pawn dies instead.",
-    "킹이 잡힐 때 폰과 자리를 바꿔 폰이 대신 죽는다.",
+  espionage: [
+    "Lasting: roll when they draw — on 4-6, you see the card.",
+    "지속 — 상대가 드로우할 때 주사위. 4·5·6이면 그 카드를 확인한다.",
   ],
-  undo: [
-    "Cancel the opponent's last turn and rewind one turn (that piece can't move this turn; captured pieces return).",
-    "상대의 방금 턴을 무효화하고 한 턴 되돌린다.",
+  evade: [
+    "Counter: your attacked piece flees to a random empty square beside it.",
+    "대응 — 공격당한 내 기물이 인접한 빈 칸으로 랜덤 도피한다.",
   ],
-  "one-more": ["Take one extra turn.", "자신의 턴을 한 번 더 사용한다."],
-  "revive-gamble": [
-    "Pick a piece other than king or queen. Chance to revive a captured piece (on failure the picked piece explodes). Does not use your turn. Pawn 50% / minor·rook 30% / queen 15%.",
-    "확률로 죽은 기물을 부활(실패 시 폭발). 턴 유지. 폰50·마이너30·퀸15%.",
+  sever: ["Counter: cancel an enchant aimed at one of your pieces.", "대응 — 내 기물을 대상으로 한 부여를 무효화한다."],
+  double: ["One piece may move twice this turn.", "이번 턴 지정한 기물을 두 번 움직일 수 있다."],
+  "blood-price": [
+    "Destroy a piece of yours (not king or pawn) to move 3 pieces. No captures.",
+    "킹·폰 외 내 기물 1개를 파괴하고 기물 3개를 이동. 공격 불가.",
   ],
-  "evolve-gamble": [
-    "Pick a piece other than king or queen. Chance to evolve it (on failure it explodes). Uses your turn. Pawn 25% → minor·rook, minor·rook 10% → queen.",
-    "확률로 기물을 진화(실패 시 폭발). 턴 소모. 폰25%·마이너10%.",
+  promotion: [
+    "Promote a pawn where it stands to a knight, bishop or rook.",
+    "내 폰 1개를 나이트·비숍·룩 중 하나로 즉시 승격한다.",
   ],
-  "peasant-revolt": [
-    "Pawns may capture the enemy piece directly in front of them.",
-    "폰이 바로 앞의 적 기물을 잡을 수 있다.",
+  "double-image": [
+    "Copy a piece into an empty square beside it for 5 of your turns.",
+    "옆칸이 빈 내 기물(킹 제외)의 분신을 소환. 자신 턴 기준 5턴 유지.",
   ],
-  "kings-return": [
-    "When your king dies it revives on a square you choose and summons 2 pawns beside it. It can't move on the revival turn.",
-    "킹이 죽으면 원하는 칸에 부활하고 폰 2기를 부른다.",
+  "kings-strike": [
+    "Assassinate an enemy beside your king; the king takes its square.",
+    "킹 주변 3×3의 적 기물 1개를 암살(적 킹 제외). 킹이 그 자리로 이동.",
   ],
-  "titan-fusion": [
-    "Cast with 2 rooks beside the king and the queen in front. They fuse into a 4-square Titan that moves up to 4 squares in any direction, wiping out enemies in range. Explodes on the 3rd hit — you lose.",
-    "룩2·퀸을 킹 옆에 모아 거신병으로 융합. 4칸 이동하며 범위 내 적 전멸. 3회 피격 시 패배.",
+  rewind: [
+    "Undo their last move. That piece cannot move on their next turn.",
+    "상대의 직전 움직임을 무효화. 상대는 다음 턴 그 기물을 못 움직인다.",
   ],
-  liberation: [
-    "Every piece except kings and pawns becomes a queen. Queens made this way revert to pawns after 5 turns.",
-    "킹·폰 외 모든 기물이 퀸이 된다. 5턴 후 폰으로.",
+  thrift: [
+    "Lasting: every card you play costs 1 less (never below 1).",
+    "지속 — 이후 내가 쓰는 모든 카드의 코스트 −1 (최소 1).",
+  ],
+  riposte: [
+    "Counter: undo a quick card of theirs and use it yourself.",
+    "대응 — 상대의 속공 카드를 무효화하고 그 효과를 내가 발동한다.",
+  ],
+  "last-stand": [
+    "Counter: as you are mated, teleport your king to any empty square.",
+    "대응 — 체크메이트 시 킹을 임의의 빈 칸으로 순간이동시킨다.",
+  ],
+  shatter: ["Destroy a lasting card in play, or a card in their hand.", "발동 중인 지속 카드 1장, 또는 상대 패 1장을 파괴한다."],
+  exchange: ["Trade a card in your hand for one in theirs.", "내 패 1장과 상대 패 1장을 교환한다."],
+  awaken: ["One of your pieces becomes a queen for 5 of your turns.", "킹·퀸 외 내 기물 1개가 자신 턴 기준 5턴간 퀸이 된다."],
+  brainwash: [
+    "Turn up to 3 enemy pawns to your side until the enchant is lifted.",
+    "상대 폰 최대 3개를 내 폰으로 전환. 부여가 풀리면 원래대로.",
+  ],
+  "bond-chain": [
+    "Link one of your pieces to an enemy: they cannot attack each other.",
+    "내 기물과 적 기물을 연결. 연결된 둘은 서로 공격할 수 없다.",
+  ],
+  "fate-chain": [
+    "Link one of your pieces to an enemy: if one dies, so does the other.",
+    "내 기물과 적 기물을 연결. 하나가 파괴되면 다른 하나도 파괴된다.",
+  ],
+  "agile-knight": ["Lasting: your knights also move like a Janggi elephant.", "지속 — 내 나이트가 장기의 상처럼도 움직인다."],
+  "muddy-water": ["Lasting: every card they play costs 1 more.", "지속 — 상대가 쓰는 카드의 코스트가 모두 +1."],
+  bodyguard: [
+    "Counter: another piece dies in the king's place and the king takes its square.",
+    "대응 — 킹이 공격당할 때 다른 기물이 대신 죽고 킹이 그 자리로 이동한다.",
+  ],
+  pandemonium: [
+    "Scatter every piece but the kings at random across its own two home ranks.",
+    "양측 킹을 제외한 모든 기물을 각자 진영 2줄 안에 랜덤 재배치한다.",
+  ],
+  assassinate: ["Destroy an enemy piece other than the king or queen.", "상대의 킹·퀸을 제외한 기물 1개를 파괴한다."],
+  regicide: ["Destroy an enemy queen.", "상대의 퀸 1개를 지정해 파괴한다."],
+  sanctuary: [
+    "Lasting: your pieces around your king cannot be targeted by their cards.",
+    "지속 — 내 킹 주변 3×3의 내 기물은 상대 카드의 대상이 되지 않는다.",
+  ],
+  plague: ["Lasting: every third turn, each side loses a pawn.", "지속 — 각 플레이어는 자신 턴 기준 3턴마다 폰 1개를 잃는다."],
+  "purifying-light": ["Lift every enchant off all of your pieces.", "부여마법에 걸린 내 모든 기물의 부여를 해제한다."],
+  typhoon: ["Destroy every lasting card on the field, yours included.", "필드 위 모든 지속 카드를 파괴한다 (아군·적군 전부)."],
+  earthquake: ["Destroy every pawn on the board.", "양측의 폰을 전부 파괴한다."],
+  "gambling-den": [
+    "Lasting: both sides roll a die at the start of every turn.",
+    "지속 — 양측 모두 턴 시작 시 주사위를 굴린다.",
   ],
 };

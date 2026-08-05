@@ -1,4 +1,4 @@
-import type { MatchEvent, MatchState } from "@skill/engine";
+import type { GameMode, MatchEvent, MatchState } from "@skill/engine";
 import type { Color } from "@skill/chess-core";
 
 /** Summary of a joinable room, shown in the Join Room list. */
@@ -6,6 +6,8 @@ export interface RoomInfo {
   code: string;
   title: string;
   gameId: string;
+  /** Which chess mode the room plays: classic, skill, or master. */
+  mode: GameMode;
   /** True if the room requires a password to join. */
   locked: boolean;
   /** How many players are currently in the room (0–2). */
@@ -25,14 +27,24 @@ export interface TimeControl {
   incrementMs: number;
 }
 
-/** Messages the client sends to the server. `deck` is the drafted card list
- *  (empty for now — the skill/card system is being reworked). */
+/**
+ * Messages the client sends to the server. `deck` is that player's saved deck
+ * for `mode` — empty in classic mode, 30 cards in skill, 50 in master. Both
+ * players in a room must be playing the same mode, so it is part of the
+ * matchmaking intent rather than something negotiated afterwards.
+ */
 export type ClientMsg =
   // Matchmaking intents
-  | { type: "quickstart"; gameId: string; deck: string[]; timeControl?: TimeControl }
-  | { type: "create-room"; title: string; password?: string; gameId: string; deck: string[]; timeControl?: TimeControl }
+  | { type: "quickstart"; gameId: string; mode: GameMode; deck: string[]; timeControl?: TimeControl }
+  | { type: "create-room"; title: string; password?: string; gameId: string; mode: GameMode; deck: string[]; timeControl?: TimeControl }
   | { type: "list-rooms" }
-  | { type: "join-room"; code: string; password?: string; deck: string[] }
+  /**
+   * Joining is the one intent that cannot name its own mode: the room already
+   * decided that, and a code-based join has not seen the room list. So the
+   * joiner offers a deck for each mode and the server takes the one that fits,
+   * rather than spending a round trip asking what the room is playing.
+   */
+  | { type: "join-room"; code: string; password?: string; decks: Partial<Record<GameMode, string[]>> }
   | { type: "cancel" }
   // In-match (action shape is game-specific; the room's engine interprets it)
   | { type: "action"; action: unknown }
@@ -49,6 +61,7 @@ export type ServerMsg =
       room: string;
       color: Color;
       gameId: string;
+      mode: GameMode;
       timeControl: TimeControl;
     }
   | {

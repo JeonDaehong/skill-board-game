@@ -7,33 +7,53 @@ import { makeChess } from "../chess/controller.js";
 import { makeLocalBoardGame } from "../board/controller.js";
 import { deckScreen } from "./deck.js";
 import { makeSetup } from "./setup.js";
+import { makeModeSelect } from "./mode-select.js";
 import { isGameId, LADDERS, type GameId } from "../difficulty.js";
 import { pillNav } from "./nav.js";
 import { topHud } from "./hud.js";
 import { icon, type IconName } from "../ui/art.js";
 import { t } from "../i18n.js";
 
-/** Single Play flow: pick a game → difficulty + side → 3·2·1 → AI match.
+/**
+ * Single Play flow: pick a game → (chess only) pick a mode → difficulty + side
+ * → 3·2·1 → AI match.
  *
- *  Built on entry rather than at module load: `t()` resolves once where it is
- *  called, so a picker constructed at import time would keep the language that
- *  was active when the bundle first ran. */
+ * Only chess has modes; the other games go straight to setup, so the mode step
+ * is inserted for chess rather than made a stop on every path.
+ *
+ * Built on entry rather than at module load: `t()` resolves once where it is
+ * called, so a picker constructed at import time would keep the language that
+ * was active when the bundle first ran.
+ */
 const singlePlay: Screen = (ctx) =>
   makeGamePicker(
     (game) => {
       if (!isGameId(game.id)) return menuScreen;
-      return makeSetup(
-        game.id,
-        (side, levelIndex, control) => {
-          const level = LADDERS[game.id as GameId][levelIndex]!;
-          return makeCountdown(
-            game.id === "chess"
-              ? makeChess({ humanColor: side, search: level, timeControl: control })
-              // The board games are shelved (see games.ts); they take the clock
-              // when they ship, which is why setup still offers it for them.
-              : makeLocalBoardGame(game.id, side, level),
-          );
-        },
+      if (game.id !== "chess") {
+        // The board games are shelved (see games.ts); they take the clock when
+        // they ship, which is why setup still offers it for them.
+        return makeSetup(
+          game.id,
+          (side, levelIndex) =>
+            makeCountdown(makeLocalBoardGame(game.id, side, LADDERS[game.id as GameId][levelIndex]!)),
+          singlePlay,
+        );
+      }
+      return makeModeSelect(
+        (mode) =>
+          makeSetup(
+            "chess",
+            (side, levelIndex, control) =>
+              makeCountdown(
+                makeChess({
+                  mode,
+                  humanColor: side,
+                  search: LADDERS.chess[levelIndex]!,
+                  timeControl: control,
+                }),
+              ),
+            singlePlay,
+          ),
         singlePlay,
       );
     },

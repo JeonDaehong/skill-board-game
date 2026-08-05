@@ -2,9 +2,10 @@ import { el, type AppContext, type Screen } from "../router.js";
 import { gameById } from "../games.js";
 import { driveMatchmaking, type Matchmaking } from "../net.js";
 import type { RoomSummary } from "../types.js";
+import { allDecksForMatch } from "../decks.js";
 import { multiScreen } from "./multi.js";
 import { art, icon, objectUrl } from "../ui/art.js";
-import { gameName, t, tPassthrough } from "../i18n.js";
+import { gameName, modeName, t, tPassthrough } from "../i18n.js";
 
 /**
  * Join Room: browse the server's open rooms and join one (password prompt if
@@ -57,7 +58,9 @@ export const joinRoomScreen: Screen = (ctx: AppContext) => {
   function join(code: string, password: string): void {
     if (!code.trim()) return setError(t("room.needCode"));
     setError("");
-    mm.send({ type: "join-room", code: code.trim(), password: password.trim(), deck: [] });
+    // We do not know the room's mode yet, so offer every deck and let the
+    // server pick the one that matches.
+    mm.send({ type: "join-room", code: code.trim(), password: password.trim(), decks: allDecksForMatch() });
   }
 
   function renderRooms(rooms: RoomSummary[]): void {
@@ -72,7 +75,11 @@ export const joinRoomScreen: Screen = (ctx: AppContext) => {
           art(objectUrl(room.gameId), "room-icon"),
           el("div", { class: "room-body" }, [
             el("span", { class: "room-title", text: room.title }),
-            el("span", { class: "room-meta", text: `${game ? gameName(game.id) : room.gameId}${room.locked ? " · 🔒" : ""}` }),
+            el("span", { class: "room-meta" }, [
+              el("span", { text: game ? gameName(game.id) : room.gameId }),
+              room.gameId === "chess" ? el("span", { class: "game-mode-chip", text: modeName(room.mode) }) : null,
+              room.locked ? el("span", { text: "🔒" }) : null,
+            ]),
           ]),
           el("button", { class: "btn btn-primary btn-small", text: t("common.join"), onclick: () => onJoinRoom(room, card) }),
         ]);

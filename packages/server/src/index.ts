@@ -1,5 +1,11 @@
 import { WebSocketServer, WebSocket } from "ws";
-import { isLegalDeck, type MatchEvent } from "@skill/engine";
+import {
+  GAME_MODES,
+  checkDeck as checkDeckRules,
+  describeDeckError,
+  type GameMode,
+  type MatchEvent,
+} from "@skill/engine";
 import type { Color } from "@skill/chess-core";
 import { makeEngine, type RoomEngine } from "./engine-adapter.js";
 import type { ClientMsg, Clocks, RoomInfo, ServerMsg, TimeControl } from "./protocol.js";
@@ -8,6 +14,7 @@ interface Player {
   ws: WebSocket;
   deck: string[];
   gameId?: string;
+  mode?: GameMode;
   color?: Color;
   /** Time control this player asked for; the host's / first-queued wins. */
   timeControl?: TimeControl;
@@ -21,6 +28,7 @@ interface Player {
 interface WaitingRoom {
   code: string;
   gameId: string;
+  mode: GameMode;
   title: string;
   password?: string;
   timeControl: TimeControl;
@@ -46,6 +54,7 @@ interface RoomClock {
 interface Room {
   code: string;
   gameId: string;
+  mode: GameMode;
   title: string;
   engine: RoomEngine;
   conns: { w: Player; b: Player };
@@ -72,7 +81,14 @@ const MAX_INCREMENT_MS = 5 * 60_000;
 
 const rooms = new Map<string, Room>();
 const waitingRooms = new Map<string, WaitingRoom>();
-const quickQueues = new Map<string, Player>(); // gameId → first player waiting
+/**
+ * `gameId:mode` → the first player waiting. Mode is part of the key because a
+ * classic player and a master player cannot be paired: they would not even be
+ * playing on the same size of board.
+ */
+const quickQueues = new Map<string, Player>();
+
+const queueKey = (gameId: string, mode: GameMode): string => `${gameId}:${mode}`;
 
 const PORT = Number(process.env.PORT ?? 8787);
 const wss = new WebSocketServer({ port: PORT });
@@ -96,7 +112,7 @@ function send(ws: WebSocket, msg: ServerMsg): void {
 
 function handle(player: Player, msg: ClientMsg): void {
   switch (msg.type) {
-    case "quickstart": return quickstart(player, msg.gameId, msg.deck, msg.timeControl);
+    case "quickstart": return quickstart(player, msg.gameId, msg.mode, msg.deck, msg.timeControl);
     case "create-room": return createRoom(player, msg);
     case "list-rooms": return listRooms(player);
     case "join-room": return joinRoom(player, msg);
@@ -108,12 +124,29 @@ function handle(player: Player, msg: ClientMsg): void {
 
 // ── matchmaking ──────────────────────────────────────────────
 
-function checkDeck(player: Player, deck: string[]): boolean {
-  if (!Array.isArray(deck) || !isLegalDeck(deck)) {
-    send(player.ws, { type: "error", error: "illegal deck (max 5 cost)" });
+/**
+ * A deck is checked against the mode it will be played in — size, copy limits
+ * and whether piece cards are allowed all differ between the three. The client
+ * enforces the same rules in its builder, but the socket is public.
+ */
+function checkDeck(player: Player, mode: GameMode, deck: string[]): boolean {
+  if (!Array.isArray(deck)) {
+    send(player.ws, { type: "error", error: "deck must be a list of card ids" });
+    return false;
+  }
+  const res = checkDeckRules(mode, deck);
+  if (!res.ok) {
+    send(player.ws, { type: "error", error: `illegal deck: ${describeDeckError(res.errors[0]!)}` });
     return false;
   }
   return true;
+}
+
+/** Reject a mode the build does not know about, rather than defaulting silently. */
+function checkMode(player: Player, mode: unknown): mode is GameMode {
+  if (typeof mode === "string" && (GAME_MODES as string[]).includes(mode)) return true;
+  send(player.ws, { type: "error", error: `unknown mode: ${String(mode)}` });
+  return false;
 }
 
 /** Reject a game that has not shipped yet, so no room or queue is ever created for it. */
@@ -135,39 +168,51 @@ function sanitizeControl(tc: TimeControl | undefined): TimeControl {
   };
 }
 
-function quickstart(player: Player, gameId: string, deck: string[], tc?: TimeControl): void {
+function quickstart(
+  player: Player,
+  gameId: string,
+  mode: GameMode,
+  deck: string[],
+  tc?: TimeControl,
+): void {
   if (!checkGame(player, gameId)) return;
-  if (!checkDeck(player, deck)) return;
+  if (!checkMode(player, mode)) return;
+  if (!checkDeck(player, mode, deck)) return;
   player.deck = deck;
   player.gameId = gameId;
+  player.mode = mode;
   player.timeControl = sanitizeControl(tc);
 
-  const waiting = quickQueues.get(gameId);
+  const key = queueKey(gameId, mode);
+  const waiting = quickQueues.get(key);
   if (waiting && isOpen(waiting) && waiting !== player) {
-    quickQueues.delete(gameId);
+    quickQueues.delete(key);
     // The player who has been sitting in the queue set the terms; whoever
     // walks in second takes the room as it is.
     const control = waiting.timeControl ?? DEFAULT_TIME_CONTROL;
-    return startRoom(uniqueCode(), waiting, player, gameId, "Quick Match", control);
+    return startRoom(uniqueCode(), waiting, player, gameId, mode, "Quick Match", control);
   }
-  quickQueues.set(gameId, player);
+  quickQueues.set(key, player);
   send(player.ws, { type: "waiting" });
 }
 
 function createRoom(
   player: Player,
-  msg: { title: string; password?: string; gameId: string; deck: string[]; timeControl?: TimeControl },
+  msg: { title: string; password?: string; gameId: string; mode: GameMode; deck: string[]; timeControl?: TimeControl },
 ): void {
   if (!checkGame(player, msg.gameId)) return;
-  if (!checkDeck(player, msg.deck)) return;
+  if (!checkMode(player, msg.mode)) return;
+  if (!checkDeck(player, msg.mode, msg.deck)) return;
   player.deck = msg.deck;
   player.gameId = msg.gameId;
+  player.mode = msg.mode;
 
   const code = uniqueCode();
   player.hosting = code;
   waitingRooms.set(code, {
     code,
     gameId: msg.gameId,
+    mode: msg.mode,
     title: msg.title?.trim() || "Untitled room",
     password: msg.password?.trim() || undefined,
     timeControl: sanitizeControl(msg.timeControl),
@@ -180,14 +225,21 @@ function listRooms(player: Player): void {
   const list: RoomInfo[] = [];
   for (const wr of waitingRooms.values()) {
     if (!isOpen(wr.host)) continue;
-    list.push({ code: wr.code, title: wr.title, gameId: wr.gameId, locked: !!wr.password, players: 1 });
+    list.push({
+      code: wr.code,
+      title: wr.title,
+      gameId: wr.gameId,
+      mode: wr.mode,
+      locked: !!wr.password,
+      players: 1,
+    });
   }
   send(player.ws, { type: "room-list", rooms: list });
 }
 
 function joinRoom(
   player: Player,
-  msg: { code: string; password?: string; deck: string[] },
+  msg: { code: string; password?: string; decks: Partial<Record<GameMode, string[]>> },
 ): void {
   const wr = waitingRooms.get(msg.code?.trim().toLowerCase());
   if (!wr || !isOpen(wr.host)) {
@@ -197,17 +249,21 @@ function joinRoom(
   if (wr.password && wr.password !== (msg.password ?? "").trim()) {
     return send(player.ws, { type: "join-failed", reason: "Wrong password" });
   }
-  if (!checkDeck(player, msg.deck)) return;
+  // The room's mode decides which of the joiner's decks is the relevant one,
+  // and that deck has to be legal for the game they are walking into.
+  const deck = msg.decks?.[wr.mode] ?? [];
+  if (!checkDeck(player, wr.mode, deck)) return;
 
   waitingRooms.delete(wr.code);
   wr.host.hosting = undefined;
-  player.deck = msg.deck;
+  player.deck = deck;
   player.gameId = wr.gameId;
-  startRoom(wr.code, wr.host, player, wr.gameId, wr.title, wr.timeControl);
+  player.mode = wr.mode;
+  startRoom(wr.code, wr.host, player, wr.gameId, wr.mode, wr.title, wr.timeControl);
 }
 
 function cancel(player: Player): void {
-  for (const [gameId, p] of quickQueues) if (p === player) quickQueues.delete(gameId);
+  for (const [key, p] of quickQueues) if (p === player) quickQueues.delete(key);
   if (player.hosting) {
     waitingRooms.delete(player.hosting);
     player.hosting = undefined;
@@ -219,6 +275,7 @@ function startRoom(
   white: Player,
   black: Player,
   gameId: string,
+  mode: GameMode,
   title: string,
   control: TimeControl,
 ): void {
@@ -230,15 +287,16 @@ function startRoom(
   const room: Room = {
     code,
     gameId,
+    mode,
     title,
-    engine: makeEngine(gameId, white.deck, black.deck),
+    engine: makeEngine(gameId, mode, white.deck, black.deck),
     conns: { w: white, b: black },
     rematch: { w: false, b: false },
     clock: null,
   };
   rooms.set(code, room);
-  send(white.ws, { type: "start", room: code, color: "w", gameId, timeControl: control });
-  send(black.ws, { type: "start", room: code, color: "b", gameId, timeControl: control });
+  send(white.ws, { type: "start", room: code, color: "w", gameId, mode, timeControl: control });
+  send(black.ws, { type: "start", room: code, color: "b", gameId, mode, timeControl: control });
   armClock(room, control);
   broadcast(room, []);
 }
