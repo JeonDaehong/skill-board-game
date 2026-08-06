@@ -61,12 +61,26 @@ export function aiCardAction(state: MatchState, me: Color): Action | null {
         if (worthIt) {
           const i = p.hand.findIndex((id) => {
             const m = skillMeta(id);
-            return m?.speed === "counter" && m.trigger === pending.trigger && p.cost >= m.cost;
+            return m?.speed === "counter" && m.trigger === pending.trigger
+              && cardCost(id, state, me) <= p.cost + p.bonusCost;
           });
           if (i >= 0) return { type: "counter-play", index: i };
         }
         return { type: "counter-pass" };
       }
+
+      case "arrange":
+        // 점술 puts them back in whatever order; the AI has no read on which is
+        // better, but it must answer or the step never closes.
+        return { type: "arrange", order: pending.cards.map((_, i) => i) };
+
+      case "free-moves":
+        return { type: "free-move-end" };
+
+      case "targeting":
+        // The AI never starts a targeted card, so reaching here means one was
+        // put on it (받아치기 hands a card back). Give it up rather than stall.
+        return { type: "target-cancel" };
 
       case "summon-place": {
         const zone = summonZone(state, me);
@@ -77,12 +91,16 @@ export function aiCardAction(state: MatchState, me: Color): Action | null {
       }
 
       default:
-        return null; // multi-step skills the AI never starts
+        return null;
     }
   }
 
   // ── our own turn, step by step ────────────────────────────
   if (state.chess.turn !== me) return null;
+
+  // The draw is a click now, not something the turn does for you. The AI
+  // always takes it: a card in hand is never worse than a card in the deck.
+  if (state.phase === "draw") return { type: "draw" };
 
   if (state.phase === "summon") {
     const i = bestSummon(p.hand, p.cost);
@@ -91,9 +109,12 @@ export function aiCardAction(state: MatchState, me: Color): Action | null {
   }
 
   if (state.phase === "skill") {
-    const i = p.hand.findIndex((id) => {
+    // One skill card a turn, which the engine enforces. Offering a second one
+    // got the AI a refusal it had no answer to, and the opponent's turn stopped
+    // there — so the limit is checked here rather than discovered.
+    const i = state.skillsPlayed >= 1 ? -1 : p.hand.findIndex((id) => {
       const m = skillMeta(id);
-      return m?.speed === "quick" && FREE_QUICK.has(id) && p.cost >= m.cost;
+      return m?.speed === "quick" && FREE_QUICK.has(id) && cardCost(id, state, me) <= p.cost + p.bonusCost;
     });
     if (i >= 0) return { type: "play-skill", index: i };
     return { type: "pass-phase" };

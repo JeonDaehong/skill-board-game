@@ -81,6 +81,33 @@ export function createLocalSession(cfg: LocalConfig): Session {
     return true;
   }
 
+  /**
+   * The engine refused what the AI asked for, and the AI is holding the turn.
+   *
+   * This is the difference between a policy bug and a hung game. The AI's card
+   * policy did not consult `skillsPlayed`, so holding two affordable 속공 cards
+   * meant it played one, offered the second, was told "one skill card a turn",
+   * and stopped — `apply` returns false without re-arming the timer, so nothing
+   * ever scheduled the AI again and the opponent's turn simply never finished.
+   *
+   * Walking the turn on is always possible, so a refusal can never strand it.
+   */
+  function unstick(): void {
+    if (disposed || !aiOnTheHook()) return;
+    if (state.pending) {
+      // Abandon whatever step it cannot answer. One of these always applies.
+      for (const escape of [
+        { type: "target-cancel" }, { type: "counter-pass" },
+        { type: "free-move-end" }, { type: "draw-skip" },
+      ] as Action[]) {
+        if (apply(escape)) return;
+      }
+    }
+    if (state.phase !== "move" && apply({ type: "pass-phase" })) return;
+    if (apply({ type: "end-turn" })) return;
+    console.error("[local] the AI is stuck and cannot be moved on", state.phase, state.pending?.kind);
+  }
+
   /** True when the engine is waiting on the AI for anything at all. */
   function aiOnTheHook(): boolean {
     if (state.status !== "playing") return false;
@@ -100,11 +127,16 @@ export function createLocalSession(cfg: LocalConfig): Session {
 
       const step = aiCardAction(state, aiColor);
       if (step) {
-        // A rejected card step would loop forever if it were retried, so a
-        // refusal falls through to the move instead.
         if (apply(step)) return;
+        // Retrying a refused step loops forever, so the turn is walked on
+        // instead — and walking it on is what stops the game hanging here.
+        return unstick();
       }
-      if (state.pending || state.chess.turn !== aiColor) return;
+      if (state.pending) return unstick();
+      if (state.chess.turn !== aiColor) return;
+      // Pieces only move on the move step. Searching from any other one produced
+      // a move the reducer then refused, which was the other way into the hang.
+      if (state.phase !== "move") return unstick();
 
       // 환각 makes the human's pieces read as pawns to whoever is fooled.
       const fooled = state.players[cfg.humanColor].lasting.some((l) => l.card === "hallucination");
@@ -115,13 +147,10 @@ export function createLocalSession(cfg: LocalConfig): Session {
         // The search took real time; the match may have been torn down, or the
         // human may have taken a counter window, while it ran.
         if (disposed || state !== thinkingFrom || !aiOnTheHook()) return;
-        if (move) {
-          apply({ type: "move", from: move.from, to: move.to, promotion: move.promotion });
-        } else if (state.moveSpent || state.phase !== "move") {
-          // Nothing to move (or the move was spent on a card): hand the turn
-          // over rather than sitting on it forever.
-          apply({ type: "end-turn" });
-        }
+        if (move && apply({ type: "move", from: move.from, to: move.to, promotion: move.promotion })) return;
+        // No move, or the one found was refused: hand the turn over rather than
+        // sitting on it forever.
+        if (!apply({ type: "end-turn" })) unstick();
       });
     }, delay);
   }

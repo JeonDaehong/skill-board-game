@@ -20,9 +20,12 @@ export interface WireTimeControl {
   incrementMs: number;
 }
 
-/** What this client wants a room clocked at, in the server's shape. */
-export function wireTimeControl(): WireTimeControl {
-  const tc = timeControlById(getTimeControlId());
+/**
+ * What a room should be clocked at, in the server's shape. Defaults to the
+ * player's saved choice, which is what a room they create should run on; a
+ * quick match passes the queue's own fixed control instead.
+ */
+export function wireTimeControl(tc: TimeControl = timeControlById(getTimeControlId())): WireTimeControl {
   // Byoyomi has no wire form; online rooms are Fischer, so the period rides
   // along as an increment — the closest control the server can actually run.
   return { mainMs: tc.mainMs, incrementMs: tc.stepMs };
@@ -68,6 +71,8 @@ export function driveMatchmaking(
   ctx: AppContext,
   handlers: MatchmakingHandlers,
   initial: unknown,
+  /** Ladder match: the game view reports its result to the rank when it ends. */
+  ranked = false,
 ): Matchmaking {
   let handedOff = false;
   let gameCleanup: (() => void) | null = null;
@@ -107,7 +112,7 @@ export function driveMatchmaking(
           ctx.root.replaceChildren();
           if (gameId === "chess") {
             const session = createRemoteSession(ws, myColor, msg.state as MatchState);
-            gameCleanup = mountGame(ctx, session, () => ctx.navigate(menuScreen), control);
+            gameCleanup = mountGame(ctx, session, () => ctx.navigate(menuScreen), control, { ranked });
           } else {
             const view = getView(gameId, myColor as Player);
             const session = createRemoteBoardSession(ws, myColor as Player, msg.state);

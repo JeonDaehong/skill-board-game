@@ -46,8 +46,21 @@ export interface LastingCard {
   owner: Color;
   /** Terrain-style lasting cards (늪지) hold a square. */
   sq?: Square;
-  /** Most lasting cards run until destroyed; 환각 is on a clock. */
+  /**
+   * Turns until this card expires on its own. Most lasting cards run until
+   * destroyed and leave it unset; 환각 is the one on a clock.
+   *
+   * Nothing else may borrow this field. 역병 used to keep its every-third-turn
+   * cycle here, and the expiry sweep read that cycle as a countdown — so the
+   * card destroyed itself two turns after it was played and its effect never
+   * fired once. Cards that count their own cycle use `cycle` below.
+   */
   turnsLeft?: number | null;
+  /**
+   * Turns this card has counted, per side. 역병 fires on every third turn of a
+   * given player, so the count has to be per player rather than per card.
+   */
+  cycle?: Partial<Record<Color, number>>;
 }
 
 /** Everything one side carries through a match. Pure data (serializable). */
@@ -186,6 +199,12 @@ export type Action =
   /** End the turn without moving a piece. */
   | { type: "end-turn" }
   // ── draw step ─────────────────────────────────────────────
+  /**
+   * Take the turn's draw. The draw is not automatic: you click your own deck
+   * for it, or pass the step. A drawn card that overflows the hand turns into
+   * a `draw-choice` for the client to answer.
+   */
+  | { type: "draw" }
   /** Hand is full: decline the draw and keep the hand as it is. */
   | { type: "draw-skip" }
   /** Hand is full: draw anyway, then pitch a card. */
@@ -219,7 +238,13 @@ export type Action =
    */
   | { type: "terrain"; sq: Square; victim: Color; card: string };
 
-/** Side-effects the reducer reports for the UI (toasts, animations, endings). */
+/**
+ * Side-effects the reducer reports for the UI (toasts, animations, endings).
+ *
+ * `toast.text` is a stable key, never prose: the engine has no language, and a
+ * sentence baked in here reaches the screen untranslated. The client looks the
+ * key up (see i18n's PASSTHROUGH) and shows the result.
+ */
 export type MatchEvent =
   | { type: "toast"; text: string }
   | { type: "dice"; color: Color; value: number }
@@ -227,6 +252,14 @@ export type MatchEvent =
   | { type: "played"; color: Color; card: string }
   /** A card was destroyed in play — countered, shattered, blown away. */
   | { type: "destroyed"; color: Color; card: string }
+  /** An enchant or a timed lasting card ran out on its own. */
+  | { type: "expired"; color: Color; card: string }
+  /**
+   * A piece left the board. Captures raise it too, so the board has one hook to
+   * animate a death from — a card that kills a piece silently looks like the
+   * piece was never there.
+   */
+  | { type: "slain"; color: Color; sq: Square; piece: PieceType }
   | { type: "game-over"; winner: Color | "draw"; reason: string };
 
 /** Deterministic randomness source (server-owned; seeded for reproducibility). */

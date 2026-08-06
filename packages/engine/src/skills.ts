@@ -105,7 +105,16 @@ export interface SkillMeta {
   speed: SkillSpeed;
   /** Counter cards only: the opponent action that opens this card's window. */
   trigger?: CounterTrigger;
-  /** Picks the card needs, in the order it asks for them. */
+  /**
+   * Picks the card needs, in the order it asks for them.
+   *
+   * Counter cards leave this empty even where the card reads as a choice: a
+   * counter resolves inside the window it was played into, and the targeting
+   * flow it would need runs on the *other* player's turn. Declaring a target the
+   * reducer then never collects is worse than not declaring one — 보디가드 and
+   * 최후의 저항 each spent a release picking their own answer while the table
+   * claimed the player would be asked. They resolve on their own rules instead.
+   */
   targets?: TargetSpec[];
 }
 
@@ -179,7 +188,7 @@ export const SKILLS: SkillMeta[] = [
   { id: "rewind", cost: 5, type: "active", speed: "normal" },
   { id: "thrift", cost: 5, type: "lasting", speed: "normal" },
   { id: "riposte", cost: 5, type: "active", speed: "counter", trigger: "skill" },
-  { id: "last-stand", cost: 5, type: "active", speed: "counter", trigger: "checkmate", targets: [one("empty")] },
+  { id: "last-stand", cost: 5, type: "active", speed: "counter", trigger: "checkmate" },
 
   // ── 6 cost ────────────────────────────────────────────────
   { id: "shatter", cost: 6, type: "active", speed: "quick", targets: [{ kinds: ["lasting", "opp-hand"], min: 1, max: 1 }] },
@@ -190,7 +199,7 @@ export const SKILLS: SkillMeta[] = [
   { id: "fate-chain", cost: 6, type: "enchant", speed: "normal", targets: [one("own-piece", { king: true }), one("enemy-piece", { king: true })] },
   { id: "agile-knight", cost: 6, type: "lasting", speed: "normal" },
   { id: "muddy-water", cost: 6, type: "lasting", speed: "normal" },
-  { id: "bodyguard", cost: 6, type: "active", speed: "counter", trigger: "check", targets: [one("own-piece")] },
+  { id: "bodyguard", cost: 6, type: "active", speed: "counter", trigger: "check" },
 
   // ── 7 cost ────────────────────────────────────────────────
   { id: "pandemonium", cost: 7, type: "active", speed: "normal" },

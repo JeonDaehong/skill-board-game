@@ -34,10 +34,12 @@ const COST_CAP = 10;
 const COST_PER_TURN = 1;
 const HAND_CAP = 5;
 /**
- * One under the cap, so the first turn's draw fills the hand instead of
- * opening every single game with a "your hand is full" prompt.
+ * Three, dealt one at a time before the first turn. Well under the cap, so the
+ * opening draws build the hand up instead of greeting every single game with a
+ * "your hand is full" prompt — and small enough that the deal itself reads as
+ * an opening ceremony rather than a wall of cards.
  */
-const OPENING_HAND = HAND_CAP - 1;
+const OPENING_HAND = 3;
 
 export const MODE_RULES: Record<GameMode, ModeRules> = {
   classic: {

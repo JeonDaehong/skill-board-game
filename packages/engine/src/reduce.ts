@@ -29,6 +29,7 @@ import {
   enchantsOn,
   nextPhase,
   onOpponentDrew,
+  runDrawStep,
   shuffle,
 } from "./match.js";
 import type {
@@ -149,6 +150,7 @@ function destroyPiece(
   if (!piece) return;
   s.chess.board[sq] = null;
   const owner = piece.color;
+  events.push({ type: "slain", color: owner, sq, piece: piece.type });
 
   const attached = enchantsOn(s, sq);
   s.enchants = s.enchants.filter((e) => e.on.kind === "player" || e.on.sq !== sq);
@@ -212,9 +214,10 @@ function runTurnStartCards(s: MatchState, color: Color, events: MatchEvent[], rn
   for (const owner of ["w", "b"] as Color[]) {
     for (const l of s.players[owner].lasting) {
       if (l.card !== "plague") continue;
-      const n = (typeof l.turnsLeft === "number" ? l.turnsLeft : 0) + 1;
-      l.turnsLeft = n % 3;
-      if (l.turnsLeft !== 0) continue;
+      // "각 플레이어는 자신 턴 기준 3턴마다": the count is per side, and it is
+      // kept out of `turnsLeft` so the expiry sweep never mistakes it for one.
+      l.cycle = { ...l.cycle, [color]: (l.cycle?.[color] ?? 0) + 1 };
+      if (l.cycle[color]! % 3 !== 0) continue;
       const pawns: Square[] = [];
       for (let sq = 0; sq < s.chess.board.length; sq++) {
         const p = s.chess.board[sq];
@@ -223,7 +226,7 @@ function runTurnStartCards(s: MatchState, color: Color, events: MatchEvent[], rn
       const victim = pawns[Math.floor(rng() * pawns.length)];
       if (victim !== undefined) {
         destroyPiece(s, victim, events, rng);
-        events.push({ type: "toast", text: "Plague takes a pawn" });
+        events.push({ type: "toast", text: "fx.plague" });
       }
     }
   }
@@ -244,11 +247,11 @@ function runTurnStartCards(s: MatchState, color: Color, events: MatchEvent[], rn
     }
     const victim = mine[Math.floor(rng() * mine.length)];
     if (victim !== undefined) destroyPiece(s, victim, events, rng);
-    events.push({ type: "toast", text: "The dice take a piece" });
+    events.push({ type: "toast", text: "fx.denPiece" });
   } else if (roll === 3) {
     const card = p.hand.shift();
     if (card) p.library.unshift(card);
-    events.push({ type: "toast", text: "A card goes to the bottom of your deck" });
+    events.push({ type: "toast", text: "fx.denBottom" });
   } else if (roll === 4) {
     // The choice between cost and a card is not worth a whole prompt step;
     // a full hand takes the cost, otherwise the card is the better gift.
@@ -312,13 +315,27 @@ function counterTriggers(s: MatchState, acting: Color, action: Action): CounterT
   }
   if (triggers.length === 0) return [];
 
-  return triggers.filter((t) =>
-    responder.hand.some((id) => {
-      const m = skillMeta(id);
-      return m?.speed === "counter" && m.trigger === t && purse(responder) >= cardCost(id, s, responder.color);
-    }),
-  );
+  return triggers
+    .filter((t) =>
+      responder.hand.some((id) => {
+        const m = skillMeta(id);
+        return m?.speed === "counter" && m.trigger === t && purse(responder) >= cardCost(id, s, responder.color);
+      }),
+    )
+    .sort((a, b) => TRIGGER_URGENCY.indexOf(a) - TRIGGER_URGENCY.indexOf(b));
 }
+
+/**
+ * One action can open several windows at once — a capture that is also a mate —
+ * but only one is offered, so it has to be the one worth answering. Most
+ * specific first: nothing outranks the mate that ends the game.
+ */
+const TRIGGER_URGENCY: CounterTrigger[] = [
+  "checkmate", "check", "terrain", "capture", "enchant", "skill", "summon", "move",
+];
+
+/** Which piece 보디가드 spends, cheapest first. */
+const GUARD_VALUE: Record<PieceType, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 99 };
 
 // ── main reducer ────────────────────────────────────────────
 export function reduce(prev: MatchState, action: Action, rng: Rng = Math.random): ReduceResult {
@@ -345,7 +362,7 @@ export function reduce(prev: MatchState, action: Action, rng: Rng = Math.random)
       action,
       chain: 0,
     };
-    events.push({ type: "toast", text: "Counter window" });
+    events.push({ type: "toast", text: "fx.counterWindow" });
     return { ok: true, state: s, events };
   }
 
@@ -380,6 +397,15 @@ function applyAction(
     case "end-turn": {
       if (!cardsAllowed(s)) return fail("classic mode ends its turn by moving");
       endTurn(s, acting, events, rng);
+      break;
+    }
+
+    case "draw": {
+      if (!cardsAllowed(s)) return fail("classic mode has no draw step");
+      if (s.phase !== "draw") return fail("not the draw step");
+      // A hand already at the cap turns this into a decision rather than a
+      // draw; runDrawStep leaves the `draw-choice` pending for that.
+      runDrawStep(s, acting, events, rng);
       break;
     }
 
@@ -426,9 +452,10 @@ function applyAction(
 
     case "move": {
       if (cardsAllowed(s)) {
-        if (s.phase !== "move" && s.phase !== "skill" && s.phase !== "summon") {
-          return fail("not the move step");
-        }
+        // Pieces move on the move step and nowhere else. Letting a move slip
+        // out of the summon or skill step made the phase track a decoration:
+        // you could skip the whole turn structure by clicking the board.
+        if (s.phase !== "move") return fail("not the move step");
         if (s.moveSpent && s.players[acting].doubleMove?.sq !== action.from) {
           return fail("a card was played instead of your move this turn");
         }
@@ -505,7 +532,7 @@ function doMove(
     s.players[acting].doubleMove = { sq: chosen.to, movesLeft: dm.movesLeft - 1 };
     s.chess = { ...s.chess, turn: acting };
     s.rules = deriveRules(s);
-    events.push({ type: "toast", text: "Double — move again" });
+    events.push({ type: "toast", text: "fx.doubleAgain" });
     return { ok: true, state: s, events };
   }
   s.players[acting].doubleMove = null;
@@ -548,7 +575,7 @@ function applyTerrain(
 ): void {
   if (card === "swamp") {
     s.players[victim].locked.push(sq);
-    events.push({ type: "toast", text: "Bogged down in the swamp" });
+    events.push({ type: "toast", text: "fx.swamp" });
     return;
   }
   if (card === "mine") {
@@ -558,11 +585,11 @@ function applyTerrain(
       // A king does not die on a mine; the move is simply refused.
       if (s.undo) {
         s.chess = cloneState(s.undo.chess);
-        events.push({ type: "toast", text: "The king steps back from the mine" });
+        events.push({ type: "toast", text: "fx.mineKingBack" });
       }
     } else {
       destroyPiece(s, sq, events, rng);
-      events.push({ type: "toast", text: "Mine!" });
+      events.push({ type: "toast", text: "fx.mine" });
     }
   }
 }
@@ -591,9 +618,17 @@ function playSkill(
   pay(p, price);
   p.hand.splice(index, 1);
   s.skillsPlayed += 1;
+
+  // Everything below runs on the clone, so a refusal here costs nothing: the
+  // card is back in hand and the cost unspent the moment `fail` is returned.
+  const targets = meta.targets ?? [];
+  if (targets.length > 0 && !stepIsAnswerable(s, acting, targets[0])) {
+    return fail("nothing this card can be aimed at");
+  }
+
   events.push({ type: "played", color: acting, card: id });
 
-  if ((meta.targets ?? []).length > 0) {
+  if (targets.length > 0) {
     s.pending = { kind: "targeting", color: acting, card: id, step: 0, picks: [] };
     return { ok: true, state: s, events };
   }
@@ -612,6 +647,18 @@ function fileCard(s: MatchState, color: Color, meta: SkillMeta): void {
 }
 
 // ── targeting ───────────────────────────────────────────────
+/**
+ * 성역: the card says the pieces round your king "cannot be targeted by their
+ * cards", and `rules.protected` only ever taught the move generator not to
+ * capture there. A card aimed at one still landed, which is most of what the
+ * card was bought for — so every targeting step asks here too.
+ */
+export function isShielded(s: MatchState, sq: Square, from: Color): boolean {
+  const piece = s.chess.board[sq];
+  if (!piece || piece.color === from) return false; // your own sanctuary never blocks you
+  return (s.rules.protected ?? []).includes(sq);
+}
+
 /** Is `pick` a legal answer to `spec` for `color` right now? */
 function pickIsLegal(s: MatchState, color: Color, spec: TargetSpec, pick: Pick): boolean {
   const board = s.chess.board;
@@ -621,6 +668,7 @@ function pickIsLegal(s: MatchState, color: Color, spec: TargetSpec, pick: Pick):
     if (!piece) return false;
     if (piece.type === "k" && !spec.king) return false;
     if (spec.pieces && !spec.pieces.includes(piece.type)) return false;
+    if (isShielded(s, pick.sq, color)) return false;
     if (spec.kinds.includes("own-piece") && piece.color === color) return true;
     if (spec.kinds.includes("enemy-piece") && piece.color !== color) return true;
     return false;
@@ -634,6 +682,40 @@ function pickIsLegal(s: MatchState, color: Color, spec: TargetSpec, pick: Pick):
     return false;
   }
   return spec.kinds.includes("choice") && (spec.options ?? []).includes(pick.option);
+}
+
+/**
+ * How many answers `spec` has on the board right now.
+ *
+ * This is what stops a card being paid for and then getting stuck: 헌납 asks for
+ * a card in your hand, and played as your *last* card there is nothing left to
+ * point at — the cost is gone, the card is gone, and the only way out is to
+ * cancel. Counting the answers before the card is committed turns that into a
+ * card that simply cannot be played yet, which is what it always was.
+ */
+function pickCount(s: MatchState, color: Color, spec: TargetSpec): number {
+  let n = 0;
+  for (const kind of spec.kinds) {
+    if (kind === "own-hand") n += s.players[color].hand.length;
+    else if (kind === "opp-hand") n += s.players[opposite(color)].hand.length;
+    else if (kind === "discard") n += s.players[color].discard.length;
+    else if (kind === "lasting") n += s.players.w.lasting.length + s.players.b.lasting.length;
+    else if (kind === "choice") n += (spec.options ?? []).length;
+    else {
+      // A square kind: count the squares that would survive `pickIsLegal`.
+      for (let sq = 0; sq < s.chess.board.length; sq++) {
+        if (pickIsLegal(s, color, { kinds: [kind], min: spec.min, max: spec.max, pieces: spec.pieces, king: spec.king }, { kind: "square", sq })) {
+          n++;
+        }
+      }
+    }
+  }
+  return n;
+}
+
+/** The step is answerable: it wants nothing, or there is something to give it. */
+function stepIsAnswerable(s: MatchState, color: Color, spec: TargetSpec | undefined): boolean {
+  return !spec || spec.min === 0 || pickCount(s, color, spec) >= spec.min;
 }
 
 function reduceTargeting(
@@ -705,6 +787,10 @@ function advanceTargeting(
   const picks = p.picks.slice();
   if (!picks[p.step]) picks[p.step] = [];
   if (step < specs.length) {
+    // The next step's answers depend on this step's pick, so feasibility can
+    // only be judged here. An unanswerable next step means the pick that led to
+    // it was the wrong one — refuse it and let them choose again.
+    if (!stepIsAnswerable(s, p.color, specs[step])) return fail("that leaves the card nothing to aim at");
     s.pending = { ...p, step, picks };
     return { ok: true, state: s, events };
   }
@@ -997,6 +1083,7 @@ const EFFECTS: Record<string, (c: Ctx) => string | void> = {
     if (cur === null || cur !== targetSq) return "something else is in the way";
     const victim = c.s.chess.board[targetSq];
     if (!victim || victim.color === c.me) return "aim at an enemy";
+    if (isShielded(c.s, targetSq, c.me)) return "that piece is under sanctuary";
     destroyPiece(c.s, targetSq, c.events, c.rng);
     destroyPiece(c.s, pawnSq, c.events, c.rng);
   },
@@ -1031,6 +1118,7 @@ const EFFECTS: Record<string, (c: Ctx) => string | void> = {
     if (!ring.includes(sq)) return "only beside your king";
     const victim = c.s.chess.board[sq];
     if (!victim || victim.color === c.me || victim.type === "k") return "aim at an enemy piece";
+    if (isShielded(c.s, sq, c.me)) return "that piece is under sanctuary";
     destroyPiece(c.s, sq, c.events, c.rng);
     c.s.chess.board[king] = null;
     c.s.chess.board[sq] = { color: c.me, type: "k" };
@@ -1220,7 +1308,7 @@ function reducePending(
     if (action.type === "draw-skip") {
       s.pending = null;
       s.phase = nextPhase(s, "draw");
-      events.push({ type: "toast", text: "Draw declined" });
+      events.push({ type: "toast", text: "fx.drawDeclined" });
       return { ok: true, state: s, events };
     }
     if (action.type === "draw-take") {
@@ -1249,7 +1337,7 @@ function reducePending(
     player.discard.push(card);
     s.pending = null;
     s.phase = nextPhase(s, "draw");
-    events.push({ type: "toast", text: "Card discarded" });
+    events.push({ type: "toast", text: "fx.discarded" });
     return { ok: true, state: s, events };
   }
 
@@ -1280,7 +1368,7 @@ function reducePending(
     s.pending = null;
     s.rules = deriveRules(s);
     events.push({ type: "played", color, card: p.card });
-    events.push({ type: "toast", text: "Summoned!" });
+    events.push({ type: "toast", text: "fx.summoned" });
     resolveEnding(s, events);
     return { ok: true, state: s, events };
   }
@@ -1398,7 +1486,7 @@ function resolveCounter(
       if (!meta || (meta.speed !== "quick" && meta.speed !== "counter")) {
         return applyAction(s, blocked, events, rng);
       }
-      events.push({ type: "toast", text: "Insight — the card is undone" });
+      events.push({ type: "toast", text: "fx.insight" });
       return negate();
     }
 
@@ -1426,7 +1514,7 @@ function resolveCounter(
       if (!victim || victim.color !== responder || victim.type !== "p") {
         return applyAction(s, blocked, events, rng);
       }
-      events.push({ type: "toast", text: "The shield holds" });
+      events.push({ type: "toast", text: "fx.shield" });
       endTurn(s, mover, events, rng);
       return { ok: true, state: s, events };
     }
@@ -1441,7 +1529,7 @@ function resolveCounter(
       s.chess.board[to] = victim;
       s.chess.board[victimSq] = null;
       followSquare(s, victimSq, to);
-      events.push({ type: "toast", text: "Evaded!" });
+      events.push({ type: "toast", text: "fx.evade" });
       // The attacker still takes the square it was aiming at.
       return applyAction(s, blocked, events, rng);
     }
@@ -1453,35 +1541,37 @@ function resolveCounter(
           (e) => !(e.card === "mine" && e.on.kind !== "player" && e.on.sq === blocked.sq),
         );
       }
-      events.push({ type: "toast", text: "Warded" });
+      events.push({ type: "toast", text: "fx.ward" });
       endTurn(s, mover, events, rng);
       return { ok: true, state: s, events };
     }
 
     case "sever": {
       if (blocked.type !== "play-skill") return applyAction(s, blocked, events, rng);
-      events.push({ type: "toast", text: "The enchant is cut short" });
+      events.push({ type: "toast", text: "fx.sever" });
       return negate();
     }
 
     case "bodyguard": {
-      // The guard dies in the king's place and the king takes its square.
-      const guardSq = s.pending?.kind === "targeting" ? null : null;
-      void guardSq;
+      // The guard dies in the king's place and the king takes its square — so
+      // the guard has to be a piece the king could actually step onto. Picking
+      // any piece on the board (which is what an unfiltered list gives you) sent
+      // the king across the board to wherever the lowest-numbered square was.
       const king = findKing(s.chess.board, responder);
-      const guards: Square[] = [];
-      for (let sq = 0; sq < s.chess.board.length; sq++) {
+      if (king < 0) return applyAction(s, blocked, events, rng);
+      const guards = neighborsOf(s, king).filter((sq) => {
         const pc = s.chess.board[sq];
-        if (pc && pc.color === responder && pc.type !== "k") guards.push(sq);
-      }
-      // Whoever is furthest from the king is the least useful shield to spend.
-      const pick = guards[0];
-      if (king < 0 || pick === undefined) return applyAction(s, blocked, events, rng);
+        return !!pc && pc.color === responder && pc.type !== "k";
+      });
+      // The cheapest shield in reach: spending a rook to save a tempo is not a
+      // trade anyone would choose, and the player is not asked.
+      const pick = guards.sort((a, b) => GUARD_VALUE[s.chess.board[a]!.type] - GUARD_VALUE[s.chess.board[b]!.type])[0];
+      if (pick === undefined) return applyAction(s, blocked, events, rng);
       destroyPiece(s, pick, events, rng);
       s.chess.board[king] = null;
       s.chess.board[pick] = { color: responder, type: "k" };
       followSquare(s, king, pick);
-      events.push({ type: "toast", text: "The bodyguard falls" });
+      events.push({ type: "toast", text: "fx.bodyguard" });
       s.rules = deriveRules(s);
       return { ok: true, state: s, events };
     }
@@ -1501,7 +1591,7 @@ function resolveCounter(
       s.chess.board[king] = null;
       s.chess.board[safe] = { color: responder, type: "k" };
       followSquare(s, king, safe);
-      events.push({ type: "toast", text: "Last stand — the king vanishes" });
+      events.push({ type: "toast", text: "fx.lastStand" });
       s.rules = deriveRules(s);
       return { ok: true, state: s, events };
     }

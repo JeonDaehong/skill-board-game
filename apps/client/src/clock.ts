@@ -63,6 +63,25 @@ export function timeControlLabel(tc: TimeControl, ko: boolean): string {
 
 export const DEFAULT_TIME_CONTROL = "rapid";
 
+/** The two quick-match queues. Rooms you make yourself still pick their own. */
+export type QueueKind = "normal" | "ranked";
+
+/**
+ * What a quick match is clocked at. Fixed per queue rather than taken from the
+ * player's Options: both sides have to agree on one clock, and "whoever joined
+ * the queue first wins the argument" is not agreement — you would never know
+ * what you were about to play until it had already started.
+ *
+ * Casual gets rapid, where there is room to read a card before playing it;
+ * the ladder gets blitz, the bracket competitive play actually runs on.
+ */
+export const QUEUE_CONTROL: Record<QueueKind, string> = {
+  normal: "rapid",
+  ranked: "blitz",
+};
+
+export const queueControl = (kind: QueueKind): TimeControl => timeControlById(QUEUE_CONTROL[kind]);
+
 export function timeControlById(id: string): TimeControl {
   return TIME_CONTROLS.find((c) => c.id === id) ?? TIME_CONTROLS.find((c) => c.id === DEFAULT_TIME_CONTROL)!;
 }

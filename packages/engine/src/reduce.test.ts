@@ -77,13 +77,21 @@ function play(m: MatchState, ...targets: Array<number | string | { sq: number }>
 
 const at = (n: number) => ({ sq: n });
 
+/**
+ * Walk a state to its move step. Pieces only move on the move step, and the
+ * turn now opens on a draw the player has to take by hand — but that order has
+ * its own tests, and everywhere else "and then white moves" is not the point of
+ * the assertion.
+ */
+const atMove = (s: MatchState): MatchState => (s.phase === "move" ? s : { ...s, phase: "move" });
+
 describe("modes", () => {
   it("classic plays plain chess with no deck, cost or phases", () => {
     const m = createMatch("classic", [], []);
     expect(m.phase).toBe("move");
     expect(m.players.w.hand).toHaveLength(0);
     expect(m.players.w.cost).toBe(0);
-    const s = expectOk(reduce(m, { type: "move", from: sq("e2"), to: sq("e4") }));
+    const s = expectOk(reduce(atMove(m), { type: "move", from: sq("e2"), to: sq("e4") }));
     expect(s.chess.board[sq("e4")]?.type).toBe("p");
     expect(s.chess.turn).toBe("b");
     // The input state is never mutated.
@@ -104,7 +112,7 @@ describe("modes", () => {
   });
 
   it("rejects an illegal move", () => {
-    expect(reduce(posed(), { type: "move", from: sq("e2"), to: sq("e5") }).ok).toBe(false);
+    expect(reduce(atMove(posed()), { type: "move", from: sq("e2"), to: sq("e5") }).ok).toBe(false);
   });
 });
 
@@ -112,14 +120,14 @@ describe("cost pool", () => {
   it("banks one per turn and stops at ten", () => {
     let s = createMatch("skill", [], []);
     expect(s.players.w.cost).toBe(1); // white's opening turn already collected
-    s = expectOk(reduce(s, { type: "move", from: sq("e2"), to: sq("e4") }));
+    s = expectOk(reduce(atMove(s), { type: "move", from: sq("e2"), to: sq("e4") }));
     expect(s.players.b.cost).toBe(1);
-    s = expectOk(reduce(s, { type: "move", from: sq("e7"), to: sq("e5") }));
+    s = expectOk(reduce(atMove(s), { type: "move", from: sq("e7"), to: sq("e5") }));
     expect(s.players.w.cost).toBe(2);
 
     const rich = posed({ cost: 10 });
     rich.chess = { ...rich.chess, turn: "b" };
-    const back = expectOk(reduce(rich, { type: "move", from: sq("e7"), to: sq("e5") }));
+    const back = expectOk(reduce(atMove(rich), { type: "move", from: sq("e7"), to: sq("e5") }));
     expect(back.players.w.cost).toBe(10); // capped, not 11
   });
 
@@ -157,20 +165,44 @@ describe("cost pool", () => {
 });
 
 describe("draw step", () => {
-  it("draws one at the start of a turn", () => {
+  it("opens on the draw step and waits to be asked", () => {
     const deck = Array.from({ length: 8 }, () => "meditate");
     const m = createMatch("skill", deck, []);
-    // Four cards were the opening hand; the first turn's draw makes five.
-    expect(m.players.w.hand).toHaveLength(5);
+    // The opening three, and no fourth: the turn's draw is a click, not a gift.
+    expect(m.players.w.hand).toHaveLength(3);
+    expect(m.phase).toBe("draw");
     expect(m.pending).toBeNull();
+
+    const drawn = expectOk(reduce(m, { type: "draw" }));
+    expect(drawn.players.w.hand).toHaveLength(4);
+    expect(drawn.phase).toBe("skill");
+  });
+
+  it("lets the draw be passed over, and refuses it off the draw step", () => {
+    const deck = Array.from({ length: 8 }, () => "meditate");
+    const m = createMatch("skill", deck, []);
+    const passed = expectOk(reduce(m, { type: "pass-phase" }));
+    expect(passed.players.w.hand).toHaveLength(3);
+    expect(passed.phase).toBe("skill");
+    expect(expectFail(reduce(passed, { type: "draw" }))).toMatch(/not the draw step/);
   });
 
   it("stops for a choice when the hand is already at the cap", () => {
     const deck = Array.from({ length: 10 }, () => "meditate");
     let s = createMatch("skill", deck, deck);
-    s = expectOk(reduce(s, { type: "move", from: sq("e2"), to: sq("e4") }));
-    s = expectOk(reduce(s, { type: "move", from: sq("e7"), to: sq("e5") }));
-    // White comes back to a full hand, so the draw is a decision.
+    // Opening three plus a draw a turn: white reaches the cap of five on its
+    // third turn, and the draw after that is a decision.
+    const turn = (st: MatchState, from: number, to: number): MatchState => {
+      const drawn = expectOk(reduce(st, { type: "draw" }));
+      return expectOk(reduce(atMove(drawn), { type: "move", from, to }));
+    };
+    s = turn(s, sq("e2"), sq("e4"));
+    s = turn(s, sq("e7"), sq("e5"));
+    s = turn(s, sq("g1"), sq("f3"));
+    s = turn(s, sq("g8"), sq("f6"));
+    expect(s.players.w.hand).toHaveLength(5);
+
+    s = expectOk(reduce(s, { type: "draw" }));
     expect(s.pending).toEqual({ kind: "draw-choice", color: "w" });
   });
 
@@ -214,7 +246,7 @@ describe("turn shape: 일반 vs 속공", () => {
     const m = posed({ hand: ["earthquake"] });
     const s = expectOk(reduce(m, { type: "play-skill", index: 0 }));
     expect(s.moveSpent).toBe(true);
-    expect(expectFail(reduce(s, { type: "move", from: sq("b1"), to: sq("c3") })))
+    expect(expectFail(reduce(atMove(s), { type: "move", from: sq("b1"), to: sq("c3") })))
       .toMatch(/instead of your move/);
   });
 
@@ -222,7 +254,7 @@ describe("turn shape: 일반 vs 속공", () => {
     const m = posed({ hand: ["meditate"] });
     const s = expectOk(reduce(m, { type: "play-skill", index: 0 }));
     expect(s.moveSpent).toBe(false);
-    expectOk(reduce(s, { type: "move", from: sq("b1"), to: sq("c3") }));
+    expectOk(reduce(atMove(s), { type: "move", from: sq("b1"), to: sq("c3") }));
   });
 
   it("only one skill card a turn", () => {
@@ -321,7 +353,7 @@ describe("enchants", () => {
       id: 1, card: "leap", owner: "w", on: { kind: "piece", sq: sq("h2") },
       turnsLeft: 3, ticksOn: "w",
     }];
-    const moved = expectOk(reduce(m, { type: "move", from: sq("h2"), to: sq("h3") }));
+    const moved = expectOk(reduce(atMove(m), { type: "move", from: sq("h2"), to: sq("h3") }));
     expect(moved.enchants[0]?.on).toMatchObject({ sq: sq("h3") });
   });
 
@@ -344,20 +376,20 @@ describe("death hooks", () => {
       id: 1, card: "bait", owner: "w", on: { kind: "piece", sq: sq("h2") },
       turnsLeft: null, ticksOn: "w",
     }];
-    const s = expectOk(reduce(m, { type: "move", from: sq("g3"), to: sq("h2") }));
+    const s = expectOk(reduce(atMove(m), { type: "move", from: sq("g3"), to: sq("h2") }));
     expect(s.players.w.hand.length).toBeGreaterThanOrEqual(2);
   });
 
   it("봉화 draws whenever one of your pieces falls", () => {
     const withBeacon = posed({ fen: CAPTURE_FEN, lasting: ["beacon"] });
     withBeacon.players.w.library = ["scout", "spy"];
-    const lit = expectOk(reduce(withBeacon, { type: "move", from: sq("g3"), to: sq("h2") }));
+    const lit = expectOk(reduce(atMove(withBeacon), { type: "move", from: sq("g3"), to: sq("h2") }));
 
     // The turn that follows draws a card of its own, so the beacon is worth
     // exactly one card more than the same position without it.
     const without = posed({ fen: CAPTURE_FEN });
     without.players.w.library = ["scout", "spy"];
-    const dark = expectOk(reduce(without, { type: "move", from: sq("g3"), to: sq("h2") }));
+    const dark = expectOk(reduce(atMove(without), { type: "move", from: sq("g3"), to: sq("h2") }));
     expect(lit.players.w.hand.length).toBe(dark.players.w.hand.length + 1);
   });
 
@@ -367,7 +399,7 @@ describe("death hooks", () => {
       { id: 1, card: "fate-chain", owner: "w", on: { kind: "piece", sq: sq("h2") }, turnsLeft: null, ticksOn: "w", data: { partner: sq("b3") } },
       { id: 2, card: "fate-chain", owner: "w", on: { kind: "piece", sq: sq("b3") }, turnsLeft: null, ticksOn: "w", data: { partner: sq("h2") } },
     ];
-    const s = expectOk(reduce(m, { type: "move", from: sq("g3"), to: sq("h2") }));
+    const s = expectOk(reduce(atMove(m), { type: "move", from: sq("g3"), to: sq("h2") }));
     expect(s.chess.board[sq("b3")]).toBeNull();
   });
 });
@@ -440,9 +472,9 @@ describe("board effects", () => {
     const m = posed({ hand: ["double"], fen: "4k3/8/8/8/8/8/3P4/4K3 w - - 0 1" });
     let s = play(m, at(sq("d2")));
     expect(s.players.w.doubleMove).toMatchObject({ movesLeft: 2 });
-    s = expectOk(reduce(s, { type: "move", from: sq("d2"), to: sq("d3") }));
+    s = expectOk(reduce(atMove(s), { type: "move", from: sq("d2"), to: sq("d3") }));
     expect(s.chess.turn).toBe("w"); // still white's turn
-    s = expectOk(reduce(s, { type: "move", from: sq("d3"), to: sq("d4") }));
+    s = expectOk(reduce(atMove(s), { type: "move", from: sq("d3"), to: sq("d4") }));
     expect(s.chess.turn).toBe("b");
   });
 
@@ -450,7 +482,7 @@ describe("board effects", () => {
     let s = posed({ hand: ["rewind"], cost: 10 });
     s.chess = { ...s.chess, turn: "b" };
     s.phase = "move";
-    s = expectOk(reduce(s, { type: "move", from: sq("e7"), to: sq("e5") }));
+    s = expectOk(reduce(atMove(s), { type: "move", from: sq("e7"), to: sq("e5") }));
     s.phase = "skill";
     const back = play(s, );
     expect(back.chess.board[sq("e7")]?.type).toBe("p");
@@ -542,7 +574,7 @@ describe("terrain", () => {
     expect(s.players.w.lasting[0]).toMatchObject({ card: "swamp", sq: sq("d4") });
     // A 지속 card costs the move, so the walk in happens next turn.
     s.moveSpent = false;
-    s = expectOk(reduce(s, { type: "move", from: sq("d2"), to: sq("d4") }));
+    s = expectOk(reduce(atMove(s), { type: "move", from: sq("d2"), to: sq("d4") }));
     expect(s.players.w.locked).toContain(sq("d4"));
   });
 
@@ -552,7 +584,7 @@ describe("terrain", () => {
       id: 1, card: "mine", owner: "b", on: { kind: "square", sq: sq("d4") },
       turnsLeft: null, ticksOn: "b", data: { hidden: 1 },
     }];
-    const s = expectOk(reduce(m, { type: "move", from: sq("d2"), to: sq("d4") }));
+    const s = expectOk(reduce(atMove(m), { type: "move", from: sq("d2"), to: sq("d4") }));
     expect(s.chess.board[sq("d4")]).toBeNull();
     expect(s.enchants).toHaveLength(0);
   });
@@ -566,19 +598,19 @@ describe("counter windows", () => {
     const poor = posed({ fen: SHIELD_FEN });
     poor.players.w.hand = ["small-shield"];
     poor.players.w.cost = 0;
-    const s = expectOk(reduce(poor, { type: "move", from: sq("g3"), to: sq("h2") }));
+    const s = expectOk(reduce(atMove(poor), { type: "move", from: sq("g3"), to: sq("h2") }));
     expect(s.pending).toBeNull(); // white cannot pay, so there is no prompt
 
     const rich = posed({ fen: SHIELD_FEN });
     rich.players.w.hand = ["small-shield"];
-    const s2 = expectOk(reduce(rich, { type: "move", from: sq("g3"), to: sq("h2") }));
+    const s2 = expectOk(reduce(atMove(rich), { type: "move", from: sq("g3"), to: sq("h2") }));
     expect(s2.pending).toMatchObject({ kind: "counter", color: "w" });
   });
 
   it("작은 방패 turns an attack on a pawn away", () => {
     const m = posed({ fen: SHIELD_FEN });
     m.players.w.hand = ["small-shield"];
-    let s = expectOk(reduce(m, { type: "move", from: sq("g3"), to: sq("h2") }));
+    let s = expectOk(reduce(atMove(m), { type: "move", from: sq("g3"), to: sq("h2") }));
     expect(s.pending).toMatchObject({ kind: "counter", color: "w", trigger: "capture" });
     s = expectOk(reduce(s, { type: "counter-play", index: 0 }));
     expect(s.chess.board[sq("h2")]?.color).toBe("w"); // the pawn is still there
@@ -588,7 +620,7 @@ describe("counter windows", () => {
   it("passing lets the action through untouched", () => {
     const m = posed({ fen: SHIELD_FEN });
     m.players.w.hand = ["small-shield"];
-    let s = expectOk(reduce(m, { type: "move", from: sq("g3"), to: sq("h2") }));
+    let s = expectOk(reduce(atMove(m), { type: "move", from: sq("g3"), to: sq("h2") }));
     s = expectOk(reduce(s, { type: "counter-pass" }));
     expect(s.chess.board[sq("h2")]?.color).toBe("b");
   });
@@ -624,7 +656,7 @@ describe("counter windows", () => {
     m.chess = { ...m.chess, turn: "b", board: m.chess.board.slice() };
     m.chess.board[sq("d2")] = null;
     m.chess.board[sq("d5")] = { color: "b", type: "p" };
-    let s = expectOk(reduce(m, { type: "move", from: sq("d5"), to: sq("d4") }));
+    let s = expectOk(reduce(atMove(m), { type: "move", from: sq("d5"), to: sq("d4") }));
     // The window belongs to whoever's piece is standing on the mine.
     expect(s.pending).toMatchObject({ kind: "counter", trigger: "terrain", color: "b" });
     s = expectOk(reduce(s, { type: "counter-play", index: 0 }));
@@ -673,9 +705,21 @@ describe("master mode: summoning", () => {
 describe("turn-start lasting cards", () => {
   it("역병 eats a pawn every third turn", () => {
     const m = posed({ lasting: ["plague"] });
-    m.players.w.lasting[0]!.turnsLeft = 2; // about to come round
+    // Two of black's turns already counted, so the next one comes round. The
+    // count lives in `cycle` rather than `turnsLeft`: the expiry sweep reads
+    // `turnsLeft` as a countdown, and parking the cycle there made the card
+    // destroy itself before it ever fired.
+    m.players.w.lasting[0]!.cycle = { b: 2 };
     const s = expectOk(reduce(m, { type: "end-turn" }));
     expect(s.chess.board.filter((p) => p?.type === "p").length).toBe(15);
+  });
+
+  it("역병 outlives its own cycle instead of expiring on it", () => {
+    let s = posed({ lasting: ["plague"] });
+    for (let i = 0; i < 6; i++) {
+      s = expectOk(reduce(s, { type: "end-turn" }));
+      expect(s.players.w.lasting.map((l) => l.card)).toContain("plague");
+    }
   });
 
   it("도박장 rolls for whoever's turn it is", () => {
@@ -684,7 +728,9 @@ describe("turn-start lasting cards", () => {
     m.players.b.library = ["spy", "scout", "meditate"];
     const r = reduce(m, { type: "end-turn" }, fixed(0.9)); // a 6
     const s = expectOk(r);
-    // Two from the dice, on top of the turn's own draw.
-    expect(s.players.b.hand).toHaveLength(3);
+    // Two from the dice. The turn's own draw is not among them — that one is
+    // taken by hand, on the draw step this state has only just opened.
+    expect(s.players.b.hand).toHaveLength(2);
+    expect(s.phase).toBe("draw");
   });
 });

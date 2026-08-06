@@ -259,9 +259,8 @@ export function nextPhase(state: MatchState, from: Phase): Phase {
 
 /**
  * Runs when `color`'s turn begins: bank cost, tick enchants down, clear last
- * turn's temporary state, fire the turn-start lasting cards, then open the draw
- * step — which is where a full hand becomes a decision, so this can leave a
- * `draw-choice` pending for the client to answer.
+ * turn's temporary state, and open the draw step. It does not take the draw —
+ * that is the `draw` action, which the player fires by clicking their deck.
  */
 export function beginTurn(
   state: MatchState,
@@ -289,8 +288,11 @@ export function beginTurn(
 
   p.cost = Math.min(cfg.costCap, p.cost + cfg.costPerTurn);
   state.rules = deriveRules(state);
+  // The draw step opens; it does not resolve. Taking the card is the player's
+  // own click on their own deck, which is the one moment in the turn where the
+  // deck is a thing you touch rather than a number you read.
   state.phase = "draw";
-  runDrawStep(state, color, events, rng);
+  void rng;
 }
 
 /**
@@ -345,7 +347,7 @@ export function endEnchant(state: MatchState, e: Enchant, events: MatchEvent[]):
       state.chess.board[e.on.sq] = { color: piece.color, type: was as typeof piece.type };
     }
   }
-  events.push({ type: "toast", text: `${e.card} ended` });
+  events.push({ type: "expired", color: e.owner, card: e.card });
 }
 
 /**

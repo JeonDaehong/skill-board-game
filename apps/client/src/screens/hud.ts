@@ -1,6 +1,7 @@
 import { el, type AppContext } from "../router.js";
 import { icon } from "../ui/art.js";
 import { formatCoins, getCoins } from "../economy.js";
+import { getNickname } from "../player.js";
 
 /**
  * Persistent top HUD bar (game-launcher style): brand mark on the left,
@@ -8,7 +9,7 @@ import { formatCoins, getCoins } from "../economy.js";
  * can be dropped onto any screen without import cycles.
  */
 export function topHud(ctx: AppContext): HTMLElement {
-  const nick = localStorage.getItem("skill-board:nickname") || "Player";
+  const nick = getNickname();
 
   const brand = el("button", { class: "hud-brand" }, [
     el("span", { class: "brand-mark", text: "◆" }),

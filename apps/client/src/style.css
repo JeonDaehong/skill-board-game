@@ -389,9 +389,22 @@ button { font-family: inherit; }
 .invite-row { display: flex; align-items: center; gap: 10px; }
 .invite-code { font-family: var(--display); font-size: 1.9rem; font-weight: 700; letter-spacing: 0.28em; text-transform: uppercase; padding: 10px 16px 10px 24px; background: #17100a; border: 1px solid var(--gold-dk); border-radius: var(--r-sm); color: var(--gold-lt); text-shadow: 0 0 14px rgba(216, 180, 90, 0.5); }
 
-/* ── Tab screens (profile / shop) ────────────────────────── */
+/* ── Tab screens (profile / shop) ──────────────────────────
+   These were built at 560px, which is a phone column — and on a desktop it read
+   as one, with a two-up shop grid stranded in the middle of an empty page while
+   every other screen used the full width. The column is wide now and the grids
+   inside it fit as many tiles as there is room for. Text blocks that want a
+   short measure cap themselves rather than making the whole page narrow. */
 .tab-screen { justify-content: flex-start; padding: 0; }
-.tab-scroll { width: min(94vw, 560px); height: 100vh; overflow-y: auto; padding: 74px 6px 110px; display: flex; flex-direction: column; gap: 16px; align-items: stretch; }
+.tab-scroll {
+  width: min(94vw, 1120px);
+  height: 100vh; overflow-y: auto;
+  padding: 74px 10px 110px;
+  display: flex; flex-direction: column; gap: 16px; align-items: stretch;
+}
+.tab-scroll .shop-section-note,
+.tab-scroll .coming-note,
+.tab-scroll .rank-hint { max-width: 62ch; }
 .section-title { font-family: var(--display); font-size: 1.05rem; font-weight: 700; color: var(--gold); margin: 6px 2px 0; }
 .coming-note { color: var(--muted); font-size: 0.84rem; text-align: center; padding: 10px 0 4px; font-style: italic; }
 .profile-hero { display: flex; align-items: center; gap: 16px; padding: 18px; }
@@ -417,7 +430,18 @@ button { font-family: inherit; }
 .wallet { display: flex; align-items: center; gap: 6px; padding: 8px 16px; }
 .coin { width: 1.15em; height: 1.15em; }
 .wallet-amount { font-family: var(--display); font-weight: 700; color: var(--gold-lt); }
-.shop-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+/*
+ * As many tiles as fit, rather than always two — and `auto-fill` rather than
+ * `auto-fit`, which is what the pack and piece rows used. `auto-fit` collapses
+ * the tracks nothing landed in and shares the width among the survivors, so a
+ * shelf holding two card packs turned them into two 550px slabs on a wide page.
+ * `auto-fill` keeps the tracks, so a tile is a tile however few there are.
+ */
+.shop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+  gap: 12px;
+}
 .shop-item { position: relative; padding: 16px 14px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
 .item-tag { position: absolute; top: 10px; right: 10px; font-family: var(--ui); font-size: 0.64rem; font-weight: 700; padding: 3px 8px; background: #4a3620; color: var(--gold-lt); border: 1px solid var(--gold-dk); border-radius: 999px; }
 .item-icon { width: 66px; height: 66px; object-fit: contain; padding: 6px; background-color: #3a2717; border: 1px solid var(--frame); border-radius: 12px; box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.6); }
@@ -432,7 +456,6 @@ button { font-family: inherit; }
   letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
 }
 .shop-section-note { font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
-.piece-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
 /* The count is the thing a collector checks first, so it gets the corner the
    "Soon" badge uses elsewhere. */
 .owned-tag {
@@ -453,6 +476,43 @@ button { font-family: inherit; }
 .shop-notice.ok { color: #cfe6a8; background: #29331d; border-color: #4c6032; }
 .shop-notice.bad { color: #ffc0aa; background: #35201a; border-color: #6d3527; }
 .shop-notice.hidden { display: none; }
+.shop-item.skin-item.owned .item-icon { box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.6), 0 0 14px rgba(216, 180, 90, 0.35); }
+
+/* ── The wardrobe (profile) ────────────────────────────────
+   What you are wearing and what else you own, side by side. Skins you have not
+   bought stay in the row, locked — a wardrobe with the unowned rows deleted
+   gives you no reason to visit the shop. */
+.skin-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; }
+.skin-tile {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 12px 10px;
+  border-radius: var(--r-sm);
+  font: inherit; color: inherit; text-align: center;
+  cursor: pointer;
+  transition: border-color 0.14s ease, box-shadow 0.14s ease, transform 0.1s ease;
+}
+.skin-tile:hover:not(.locked):not(.worn) { border-color: var(--gold-dk); transform: translateY(-2px); }
+.skin-art {
+  width: 58px; height: 58px; object-fit: contain;
+  padding: 5px;
+  background-color: #2e2016;
+  border: 1px solid var(--frame); border-radius: 10px;
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.6);
+}
+.skin-name { font-family: var(--ui); font-size: 0.84rem; font-weight: 700; color: var(--parch); }
+.skin-state { font-size: 0.7rem; letter-spacing: 0.04em; color: var(--muted); }
+/* The one you have on is the only lit tile, so the row answers "what am I
+   wearing" without being read. */
+.skin-tile.worn {
+  border-color: var(--gold); cursor: default;
+  box-shadow: var(--frame-in), 0 0 18px rgba(216, 150, 70, 0.3);
+}
+.skin-tile.worn .skin-name { color: var(--gold-lt); }
+.skin-tile.worn .skin-state { color: var(--gold); font-weight: 700; }
+.skin-tile.locked { cursor: default; opacity: 0.5; }
+.skin-tile.locked .skin-art { filter: grayscale(0.9) brightness(0.7); }
+.skin-lock { position: absolute; top: 8px; right: 8px; width: 1em; height: 1em; opacity: 0.75; }
 
 /* ── Option ──────────────────────────────────────────────── */
 .option-list { display: flex; flex-direction: column; gap: 10px; width: min(90vw, 360px); }
@@ -575,26 +635,6 @@ button { font-family: inherit; }
 .promo-btn { font-size: 2.4rem; width: 74px; height: 74px; line-height: 1; background: #2a1d12; border: 1px solid var(--frame); border-radius: 12px; color: var(--fg); cursor: pointer; }
 .promo-btn:hover { border-color: var(--gold); background: #33241a; }
 
-.skill-bar { width: min(94vw, 640px); display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; min-height: 40px; }
-.skill-bar-empty { color: var(--muted); font-size: 0.85rem; padding: 8px; }
-.sacrifice-bar { display: flex; justify-content: center; }
-.sacrifice-bar.hidden { display: none; }
-.opp-strip { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; min-height: 30px; }
-.opp-strip-label { font-size: 0.8rem; color: var(--muted); }
-.opp-card { min-width: 34px; height: 30px; padding: 0 10px; border-radius: 8px; background: #2a1d12; border: 1px solid var(--frame); display: flex; align-items: center; justify-content: center; font-size: 0.8rem; color: var(--muted); }
-.opp-card.revealed { background: #3a2438; color: #e0a8d9; font-weight: 600; }
-.opp-card.peekable { cursor: pointer; border-color: var(--gold); }
-.skill-chip { display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 8px; background: #2a1d12; border: 1px solid var(--frame); border-radius: 10px; min-width: 118px; transition: border-color 0.12s ease; }
-.skill-chip .chip-icon { font-size: 1.3rem; }
-.skill-chip.passive .chip-icon { color: var(--arcane); }
-.chip-body { display: flex; flex-direction: column; line-height: 1.2; }
-.chip-name { font-size: 0.85rem; font-weight: 700; }
-.chip-state { font-size: 0.7rem; color: var(--muted); }
-.skill-chip.ready .chip-state { color: var(--good); }
-.skill-chip.cooldown .chip-state { color: #d98aa8; }
-.skill-chip.spent { opacity: 0.5; }
-.skill-chip.usable { cursor: pointer; border-color: var(--gold); }
-.skill-chip.usable:hover { background: #33241a; }
 .quoridor-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; width: min(94vw, 640px); }
 .quoridor-walls { font-family: var(--ui); font-weight: 700; color: var(--gold-lt); margin-left: 6px; }
 
@@ -1054,7 +1094,6 @@ button { font-family: inherit; }
 /* ── Pack opening ─────────────────────────────────────────────
    The cards land one at a time; the order they come out in is the whole point
    of buying a pack. */
-.pack-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 .btn-open { margin-top: 6px; background: var(--grad-gold); color: #2a1809; border-color: var(--gold-lt); text-shadow: 0 1px 0 rgba(255, 244, 210, 0.4); }
 .btn-open:hover { color: #2a1809; filter: brightness(1.06); }
 .pack-overlay {
@@ -1076,78 +1115,28 @@ button { font-family: inherit; }
 }
 
 /* ── In-match card UI (skill / master) ────────────────────────
-   Everything under the board: what you can spend, where you are in the turn,
-   what the game is waiting on, and the hand itself. */
-.resource-bar {
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 18px;
-  width: min(94vw, 640px); padding: 8px 14px;
-  background: linear-gradient(180deg, #2b1e14, #201610);
-  border: 1px solid var(--frame); border-radius: var(--r-sm); box-shadow: var(--frame-in);
-}
-.resource-bar.hidden { display: none; }
-.res-group { display: flex; align-items: center; gap: 7px; }
-.res-group.opp { margin-left: auto; opacity: 0.82; }
-.res-label { font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
-.res-value { font-family: var(--display); font-weight: 700; font-size: 0.9rem; color: var(--gold-lt); font-variant-numeric: tabular-nums; }
+   The pieces shared with the duel field below: the cost meter, the step icons,
+   and the label a card wears when it cannot be played. */
 /* Ten pips read as a resource at a glance in a way "7 / 10" never does. */
-.cost-pips { display: flex; gap: 3px; }
-.cost-pips i { width: 7px; height: 13px; border-radius: 2px; background: #1a120c; border: 1px solid var(--frame); }
+.cost-pips { display: flex; gap: 3px; flex-wrap: wrap; }
+.cost-pips i { width: 6px; height: 13px; border-radius: 2px; background: #1a120c; border: 1px solid var(--frame); }
 .cost-pips i.on { background: var(--grad-gold); border-color: var(--gold-lt); box-shadow: 0 0 6px rgba(216, 180, 90, 0.55); }
-
-.phase-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; width: min(94vw, 640px); }
-.phase-bar.hidden { display: none; }
-.phase-chips { display: flex; align-items: center; gap: 12px; }
-.phase-chip {
-  position: relative;
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 4px 11px; border-radius: 999px;
-  font-size: 0.76rem; color: var(--muted);
-  background: rgba(0, 0, 0, 0.3); border: 1px solid var(--frame);
+/* Granted for this turn only, so it is a different colour from the bank — it is
+   spendable now and gone at the end of the turn. */
+.cost-pips i.bonus {
+  background: linear-gradient(180deg, #7fa3d8, #4a6fa8);
+  border-color: #9dbaea;
+  box-shadow: 0 0 7px rgba(157, 186, 234, 0.7);
+  animation: bonus-pip 1.6s ease-in-out infinite;
 }
-.phase-icon { width: 1.3em; height: 1.3em; border-radius: 3px; }
+@keyframes bonus-pip { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
 .step-icon { width: 1.5em; height: 1.5em; border-radius: 4px; }
-.phase-chip + .phase-chip::before { content: "›"; position: absolute; left: -10px; color: var(--frame); }
-.phase-chip.active { background: var(--grad-gold); border-color: var(--gold-lt); color: #2a1809; font-weight: 700; }
-.phase-chip.spent { text-decoration: line-through; opacity: 0.5; }
-
-/* The one strip the game actually blocks on — draw choice, counter window. */
-.step-prompt {
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px;
-  width: min(94vw, 640px); padding: 10px 16px;
-  background: linear-gradient(180deg, #3a2a1b, #241811);
-  border: 1px solid var(--gold-dk); border-radius: var(--r-sm);
-  box-shadow: 0 0 22px rgba(216, 150, 70, 0.25);
-  animation: fade-in 0.2s ease;
-}
-.step-prompt.hidden { display: none; }
-.step-title { font-family: var(--display); font-weight: 700; color: var(--gold-lt); }
-.step-body { flex: 1; min-width: 170px; font-size: 0.86rem; }
-
-.hand-rail {
-  display: flex; align-items: flex-end; justify-content: center; gap: 8px;
-  width: min(96vw, 780px); min-height: 136px;
-  padding: 10px 4px 12px;
-  overflow-x: auto; overflow-y: hidden;
-}
-.hand-rail.hidden { display: none; }
-.hand-empty { align-self: center; color: var(--muted); font-size: 0.86rem; font-style: italic; }
-.hand-card { flex: 0 0 auto; width: 94px; }
-.tcg-card.hand-card.playable:hover { transform: translateY(-16px) scale(1.08); z-index: 6; }
-/* Unplayable right now, but still yours — dimmed rather than hidden, since the
-   reason it is dimmed is printed on it. */
-.tcg-card.hand-card.blocked { filter: grayscale(0.65) brightness(0.6); cursor: not-allowed; }
-.tcg-card.hand-card.blocked:hover { transform: none; filter: grayscale(0.65) brightness(0.6); }
-.tcg-card.hand-card.casting { transform: translateY(-16px); filter: drop-shadow(0 0 14px var(--gold)); }
-.hand-card.pitchable { outline: 2px dashed var(--danger); outline-offset: 2px; }
 .card-block {
   position: absolute; left: 0; right: 0; bottom: 0; z-index: 5;
   padding: 2px 4px; text-align: center;
   font-size: 0.56rem; line-height: 1.25; color: #ffd9c8;
   background: rgba(20, 10, 6, 0.86); border-top: 1px solid var(--frame);
 }
-/* A passive the opponent has in play, in the strip above the board. */
-.opp-card.lasting { background: #24331d; border-color: #4c6032; color: #cfe6a8; }
-
 /* ── Fitting the match on one screen ──────────────────────────
    The card modes stack a lot under the board — resources, phases, prompts, the
    hand — and a game you have to scroll is a game you cannot read. So the screen
@@ -1230,32 +1219,13 @@ button { font-family: inherit; }
 .log-line.destroy { color: #ffc0aa; border-left-color: #6d3527; }
 .log-line.dice { color: var(--arcane); border-left-color: var(--arcane); }
 .log-line.over { color: var(--ember); border-left-color: var(--ember); font-weight: 700; }
+/* What an effect actually did, in the engine's own words. This is the line that
+   answers "the card resolved — and then what?", so it is the loudest one that
+   is not the end of the game. */
+.log-line.effect { color: #ffe3ad; border-left-color: var(--gold-lt); background: rgba(216, 180, 90, 0.11); font-weight: 700; }
+.log-line.slain { color: #ffb9a4; border-left-color: #8c3b28; }
+.log-line.expire { color: var(--muted); border-left-color: var(--frame); font-style: italic; }
 @keyframes log-in { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: none; } }
-
-/* The card that was just played, held over the board long enough to read. */
-.play-flash {
-  position: absolute; inset: 0; z-index: 12;
-  display: grid; place-items: center;
-  pointer-events: none;
-}
-.play-flash.hidden { display: none; }
-.flash-card {
-  display: flex; flex-direction: column; align-items: center; gap: 8px;
-  padding: 14px 18px; border-radius: var(--r);
-  background: radial-gradient(circle at 50% 40%, rgba(60, 40, 18, 0.92), rgba(12, 8, 5, 0.86));
-  border: 1px solid var(--gold-dk);
-  box-shadow: 0 0 40px rgba(216, 150, 70, 0.45);
-  animation: flash-in 1.4s ease both;
-}
-.flash-card .tcg-card.md { width: 148px; }
-.flash-who { font-family: var(--display); font-size: 0.82rem; letter-spacing: 0.08em; color: var(--gold-lt); }
-.flash-card.theirs { border-color: #6d3527; box-shadow: 0 0 40px rgba(200, 80, 50, 0.4); }
-@keyframes flash-in {
-  0% { opacity: 0; transform: scale(0.7) rotate(-6deg); }
-  18% { opacity: 1; transform: scale(1.04) rotate(0deg); }
-  76% { opacity: 1; transform: scale(1); }
-  100% { opacity: 0; transform: scale(1.06) translateY(-14px); }
-}
 
 /* ── Card preview ("take a closer look") ──────────────────────
    The card played for real in a sandbox match, before and after. */
@@ -1294,6 +1264,710 @@ button { font-family: inherit; }
   .preview-board { width: min(78vw, 300px); }
   .preview-arrow { transform: rotate(90deg); }
 }
+
+/* ═══ The duel field ═══════════════════════════════════════════
+   The in-match screen for chess, in all three modes.
+
+   It is a fixed-height column that never scrolls, and the board is the only
+   row that grows: everything else declares the height it needs and the board
+   takes the rest. That is the whole reason the card modes used to play on a
+   postage stamp — a hand, a resource bar, a phase bar and a prompt stacked
+   under the board add up to more than the board itself.
+
+   So the commentary moved sideways. The action feed and the panel for whatever
+   the game is waiting on sit in the margins beside the board, where a wide
+   screen has room going spare; the board keeps its full height either way. */
+.duel-screen {
+  height: 100vh;
+  overflow: hidden;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px 10px;
+}
+
+.duel-top {
+  flex: 0 0 auto;
+  width: min(99vw, 1180px);
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.duel-exit {
+  padding: 6px 16px; border-radius: var(--r-sm); cursor: pointer;
+  font-family: var(--ui); font-weight: 700; font-size: 0.84rem;
+  color: var(--gold-lt); background: linear-gradient(180deg, #33241a, #241811);
+  border: 1px solid var(--frame);
+  transition: color 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+}
+.duel-exit:hover { color: #fff6df; border-color: var(--gold); box-shadow: 0 0 14px rgba(216, 180, 90, 0.28); }
+
+/* ── The nameplates ──────────────────────────────────────────
+   In the left margin — opponent at the top of it, you at the bottom — rather
+   than as full-width rows above and below the board. Same information, none of
+   the board's height. Both sides carry the same furniture, because a resource
+   you can see on yourself and not on your opponent is one you cannot plan
+   against. */
+.seat-plate {
+  display: flex; flex-direction: column; gap: 7px;
+  padding: 10px 12px;
+  border: 1px solid var(--frame); border-radius: var(--r-sm);
+  background: linear-gradient(180deg, #2b1e14, #1c130d);
+  box-shadow: var(--frame-in);
+  opacity: 0.6;
+  transition: opacity 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+/* The side to move is lit, so the board does not have to say whose turn it is
+   in three places at once. */
+.seat-plate.active { opacity: 1; border-color: var(--gold); box-shadow: var(--frame-in), 0 0 20px rgba(216, 150, 70, 0.28); }
+.plate-avatar {
+  width: 30px; height: 30px; flex: 0 0 auto;
+  background-color: #3a2717; background-size: 74%;
+  border: 1px solid var(--frame); border-radius: 50%;
+}
+.plate-id { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.plate-name {
+  font-family: var(--display); font-weight: 700; font-size: 0.95rem; color: var(--gold-lt);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.plate-side { font-size: 0.62rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.plate-cost { display: flex; align-items: center; gap: 7px; }
+.plate-num { font-family: var(--display); font-weight: 700; font-size: 0.84rem; color: var(--gold-lt); font-variant-numeric: tabular-nums; }
+.plate-bonus {
+  font-family: var(--display); font-weight: 700; font-size: 0.84rem;
+  color: #9dbaea; font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 8px rgba(157, 186, 234, 0.6);
+}
+/* On the head row beside the name, not stacked under the plate — see the note
+   in renderPlate. `margin-left: auto` keeps it hard right whatever the name
+   does, and `flex: 0 0 auto` stops a long nickname squeezing the digits. */
+.seat-plate .clock-face {
+  flex: 0 0 auto; margin-left: auto;
+  min-width: 0; padding: 3px 9px; font-size: 1.05rem;
+}
+.plate-head { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.seat-side { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+
+/* ── The piles ───────────────────────────────────────────────
+   Deck, graveyard, and the field where 지속 cards sit while they are rewriting
+   the rules. A card game played out of three numbers on a nameplate is a card
+   game with no table. */
+.zone-block { display: flex; flex-direction: column; gap: 7px; }
+.zone-block.hidden { display: none; }
+.zone-row { display: flex; gap: 8px; }
+.zone {
+  position: relative; flex: 1 1 0; min-width: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 7px 6px 6px;
+  border: 1px solid var(--frame); border-radius: var(--r-sm);
+  background: linear-gradient(180deg, #241811, #1a120c);
+  box-shadow: var(--frame-in);
+  color: var(--muted); cursor: pointer;
+  font-family: var(--ui);
+  transition: border-color 0.14s ease, box-shadow 0.14s ease, transform 0.1s ease;
+}
+.zone:hover { border-color: var(--gold-dk); transform: translateY(-1px); }
+/* An empty slot still holds its shape, so the row does not jump when the last
+   card leaves the pile. */
+.zone-stack {
+  width: 42px; height: 59px;
+  display: grid; place-items: center;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(122, 90, 48, 0.35);
+}
+.zone-stack .tcg-card.xs { width: 42px; cursor: inherit; }
+.zone-label { font-size: 0.58rem; letter-spacing: 0.1em; text-transform: uppercase; }
+.zone-count { font-family: var(--display); font-weight: 700; font-size: 0.95rem; color: var(--parch); font-variant-numeric: tabular-nums; }
+/* Your deck on your own draw step: this is the click that takes the card. */
+.zone-deck.ready {
+  border-color: var(--gold-lt); color: var(--gold-lt);
+  box-shadow: var(--frame-in), 0 0 22px rgba(216, 180, 90, 0.45);
+  animation: zone-beckon 1.5s ease-in-out infinite;
+}
+.zone-deck.ready::after {
+  content: ""; position: absolute; inset: -3px;
+  border-radius: calc(var(--r-sm) + 3px);
+  border: 1px solid rgba(242, 217, 141, 0.5);
+  pointer-events: none;
+}
+@keyframes zone-beckon {
+  0%, 100% { box-shadow: var(--frame-in), 0 0 18px rgba(216, 180, 90, 0.3); }
+  50% { box-shadow: var(--frame-in), 0 0 30px rgba(216, 180, 90, 0.7); }
+}
+.zone-hint {
+  position: absolute; left: 50%; top: calc(100% + 6px);
+  transform: translateX(-50%);
+  padding: 3px 10px; border-radius: 999px;
+  font-size: 0.66rem; white-space: nowrap; z-index: 6;
+  color: #2a1809; background: var(--grad-gold);
+  border: 1px solid var(--gold-lt);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+.zone-deck:not(.ready) { cursor: default; }
+.zone-deck:not(.ready):hover { border-color: var(--frame); transform: none; }
+.zone.spent .zone-stack { opacity: 0.4; }
+
+.zone-field {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 6px 8px;
+  border: 1px dashed var(--frame); border-radius: var(--r-sm);
+  background: rgba(0, 0, 0, 0.22);
+}
+/* Nothing in play: collapse to a single quiet line. */
+.zone-field.empty {
+  flex-direction: row; align-items: baseline; gap: 6px;
+  padding: 2px 4px;
+  border: 0; background: none;
+}
+.zone-none { font-size: 0.7rem; font-style: italic; color: var(--muted); opacity: 0.7; }
+.zone-field-cards { display: flex; flex-wrap: wrap; gap: 4px; }
+.tcg-card.field-card { width: 38px; cursor: pointer; }
+.tcg-card.field-card:hover { transform: translateY(-4px) scale(1.12); z-index: 5; }
+
+/* ── The board and its margins ───────────────────────────────
+   A flex row: the board is square and as tall as the row, and the two flanks
+   split whatever width is left over. */
+.duel-arena {
+  flex: 1 1 auto; min-height: 0;
+  width: 100%;
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+}
+/* Left margin: who is playing, opponent at the top and you at the bottom, in
+   the same up/down relationship they would have had as rows. Right margin:
+   what the game is asking for, and what just happened. */
+.duel-flank {
+  flex: 1 1 0; min-width: 0; max-width: 232px;
+  align-self: stretch;
+  display: flex; flex-direction: column; gap: 8px;
+  justify-content: space-between;
+  /* Scroll, never crop. `overflow: hidden` here silently cut 107px off the
+     bottom of this column on a 1366x768 screen, and the bottom of this column
+     is your own nameplate — so the fix is not only that the clock moved up. */
+  min-height: 0; overflow-y: auto; overflow-x: hidden;
+  scrollbar-width: thin; scrollbar-color: var(--frame) transparent;
+}
+/* Whatever else is in the right margin, the feed sits at the bottom of it. */
+.duel-flank .action-log { width: 100%; min-height: 0; margin-top: auto; overflow: hidden; }
+.duel-flank.right .step-panel { flex: 0 0 auto; }
+/*
+ * The board is square and sized off the row's height, so every pixel the rest
+ * of the column gives back becomes board. On a 1366x768 window it measured
+ * 381px with ~450px of the row's width sitting empty; the height it now gets
+ * comes from the step strip moving into this margin and from the hand rails
+ * being sized in vh rather than in fixed pixels. The vw cap only bites on a
+ * window that is wider than it is tall by a long way.
+ */
+.duel-screen .board-wrap {
+  flex: 0 0 auto;
+  height: min(100%, 68vw);
+  width: auto;
+  aspect-ratio: 1 / 1;
+}
+.duel-screen .board-canvas { width: 100%; height: 100%; }
+
+/* ── The hands ───────────────────────────────────────────────
+   Fanned rather than laid out in a row: a hand of cards is a hand of cards,
+   and the overlap is what lets six of them stay big enough to read. */
+.hand-rail {
+  flex: 0 0 auto;
+  display: flex; align-items: flex-end; justify-content: center;
+  width: 100%;
+  padding: 0;
+}
+/* Sized in vh, not in pixels: a fixed 128px rail is a fixed 128px the board
+   does not get, and on a short window that is the difference between a board
+   you can read and one you squint at. */
+.my-hand { min-height: clamp(104px, 17vh, 152px); padding-top: 14px; align-items: flex-end; }
+.opp-hand { min-height: clamp(62px, 10vh, 92px); align-items: flex-start; }
+.hand-empty { align-self: center; color: var(--muted); font-size: 0.82rem; font-style: italic; padding: 20px 0; }
+
+.hand-slot {
+  --off: calc(var(--i, 0) - (var(--n, 1) - 1) / 2);
+  flex: 0 0 auto;
+  margin: 0 -13px;
+  z-index: calc(var(--i, 0));
+}
+/* Rotating about a point outside the card fans the hand *and* arcs it, which
+   is one transform instead of two and no squared offsets to compute. Your hand
+   pivots below the rail, theirs above it, so both fans open away from the
+   board. */
+.my-hand .hand-slot { transform-origin: 50% 260%; transform: rotate(calc(var(--off) * 3.6deg)); }
+.opp-hand .hand-slot { transform-origin: 50% -180%; transform: rotate(calc(var(--off) * 3.6deg)); }
+.hand-slot:has(.hand-card:hover) { z-index: 40; }
+
+/* Card size follows the rail, so the fan never overflows the height it was
+   given — the cards are what make the rail tall, not the other way round.
+
+   The opponent's backs are big enough to aim at: a card asking you to pick one
+   of them (정찰, 강요, 교환) is asking you to hit a target, and a 58px sliver at
+   the top edge of the screen is not a target. */
+.tcg-card.hand-card { width: clamp(76px, 11.5vh, 110px); }
+.opp-hand .tcg-card.hand-card { width: clamp(58px, 8vh, 86px); }
+.tcg-card.hand-card.playable { cursor: pointer; }
+.tcg-card.hand-card.playable:hover { transform: translateY(-24px) scale(1.1); filter: drop-shadow(0 18px 26px rgba(0, 0, 0, 0.7)) drop-shadow(0 0 18px var(--tg)); }
+/* Unplayable right now, but still yours — dimmed rather than hidden, since the
+   reason it is dimmed is printed on it. */
+.tcg-card.hand-card.blocked { filter: grayscale(0.65) brightness(0.6); cursor: not-allowed; }
+.tcg-card.hand-card.blocked:hover { transform: none; filter: grayscale(0.65) brightness(0.6); }
+.tcg-card.hand-card.casting { transform: translateY(-22px); filter: drop-shadow(0 0 18px var(--gold)); }
+.hand-card.pitchable { outline: 2px dashed var(--danger); outline-offset: 2px; }
+
+/* ── Dealing and drawing ─────────────────────────────────────
+   A card that simply appears in the hand is a number going up. The offsets are
+   measured off the deck counter at deal time, so the card genuinely comes out
+   of the deck — and the stagger is what makes the opening three read as a deal
+   rather than as three cards materialising at once. */
+.hand-card.pre-deal { opacity: 0; }
+.hand-card.dealing {
+  animation: card-deal 0.52s cubic-bezier(0.18, 0.86, 0.32, 1.1) backwards;
+  animation-delay: calc(var(--d, 0) * 130ms);
+}
+@keyframes card-deal {
+  0% { opacity: 0; transform: translate(var(--fx, 0px), var(--fy, 0px)) rotate(-26deg) scale(0.42); }
+  40% { opacity: 1; }
+  100% { opacity: 1; transform: translate(0, 0) rotate(0deg) scale(1); }
+}
+
+/* ── The back of a card ──────────────────────────────────────
+   The opponent's hand: countable, unreadable. A card a skill has looked at
+   flips over and stays that way, and the flip is what tells you it happened. */
+.tcg-card.tcg-back { cursor: default; }
+.back-face {
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  border-radius: 7px;
+  background:
+    repeating-linear-gradient(45deg, rgba(216, 180, 90, 0.07) 0 5px, transparent 5px 11px),
+    linear-gradient(180deg, #3d2c1a, #241811);
+  border: 1px solid var(--gold-dk);
+  box-shadow: inset 0 0 0 3px rgba(122, 90, 48, 0.45), inset 0 0 24px rgba(0, 0, 0, 0.72);
+}
+.back-sigil { font-size: 1.4rem; color: var(--gold); opacity: 0.5; filter: drop-shadow(0 0 8px rgba(216, 180, 90, 0.5)); }
+.opp-hand-card.peekable { cursor: pointer; }
+.opp-hand-card.peekable .back-face { border-color: var(--gold); box-shadow: inset 0 0 0 3px rgba(216, 180, 90, 0.45), 0 0 14px rgba(216, 180, 90, 0.5); }
+.tcg-card.opp-hand-card.revealed { filter: drop-shadow(0 0 12px rgba(224, 168, 217, 0.55)); animation: card-flip 0.5s ease; }
+@keyframes card-flip {
+  0% { transform: rotateY(90deg) scale(0.88); }
+  62% { transform: rotateY(-8deg) scale(1.05); }
+  100% { transform: none; }
+}
+
+/* ── The turn, spelled out ───────────────────────────────────
+   Whose turn it is, then every step of it in order, with the one you are on
+   lit. It is also the control: the trailing button walks to the next step and,
+   on the last one, ends the turn.
+
+   A column in the right margin rather than a strip under the board. The strip
+   cost the board 58px of height on every screen and read as decoration — four
+   words in a row, all the same size, one of them faintly brighter. Stacked, the
+   current step can be a whole line taller than the others, and it costs the
+   board nothing. */
+.phase-track {
+  flex: 0 0 auto;
+  display: flex; flex-direction: column; align-items: stretch; gap: 3px;
+  width: 100%;
+  padding: 7px;
+  border: 1px solid var(--frame); border-radius: var(--r-sm);
+  background: linear-gradient(180deg, #2c1f14, #1a120b);
+  box-shadow: var(--frame-in), 0 8px 22px rgba(0, 0, 0, 0.5);
+}
+/* Classic mode has no steps, so the panel is only the turn badge. */
+.phase-track.simple { padding: 0; border: 0; background: none; box-shadow: none; }
+
+.track-turn {
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  margin-bottom: 4px;
+  padding: 9px 12px; border-radius: var(--r-sm);
+  font-family: var(--display); font-weight: 700; font-size: 1rem; letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.track-turn.mine { color: #2a1809; background: var(--grad-gold); box-shadow: 0 0 20px rgba(216, 180, 90, 0.45); }
+.track-turn.theirs { color: #ffd6c6; background: linear-gradient(180deg, #71392a, #491f15); box-shadow: 0 0 20px rgba(200, 90, 60, 0.32); }
+.track-turn-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: track-pulse 1.7s ease-in-out infinite; }
+@keyframes track-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.3; transform: scale(0.66); } }
+
+.track-step {
+  position: relative;
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; border-radius: 7px;
+  font-family: var(--ui); font-size: 0.84rem; color: var(--muted);
+  white-space: nowrap;
+  transition: color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease, padding 0.16s ease;
+}
+.track-icon { width: 1.3em; height: 1.3em; border-radius: 3px; opacity: 0.5; flex: 0 0 auto; }
+.track-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+/* The instruction under the step you are on: what the click actually is. */
+.track-todo {
+  font-size: 0.72rem; font-weight: 400; letter-spacing: 0.01em;
+  color: var(--parch-2); opacity: 0.9;
+  white-space: normal; line-height: 1.25;
+}
+/* The step you are on is a size larger and carries a bar down its left edge, so
+   "where am I in the turn" is answered by shape and not only by brightness. */
+.track-step.on {
+  padding: 10px 10px 10px 13px;
+  font-size: 0.98rem; font-weight: 700;
+  color: #fff3d8;
+  background: rgba(216, 180, 90, 0.16);
+  box-shadow: inset 3px 0 0 var(--gold), inset 0 0 0 1px var(--gold-dk), 0 0 18px rgba(216, 150, 70, 0.24);
+}
+.track-step.on .track-icon { opacity: 1; filter: drop-shadow(0 0 6px rgba(216, 180, 90, 0.75)); }
+.track-step.on.mine { color: var(--gold-lt); }
+.track-step.on.mine::after {
+  content: ""; margin-left: auto;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--gold-lt);
+  box-shadow: 0 0 10px var(--gold-lt);
+  animation: track-pulse 1.4s ease-in-out infinite;
+}
+.track-step.spent { text-decoration: line-through; opacity: 0.4; }
+.track-step.waiting { opacity: 0.34; justify-content: center; }
+.track-end {
+  margin-top: 5px; padding: 9px 12px;
+  border: 1px solid var(--frame); border-radius: var(--r-sm);
+  font-family: var(--ui); font-weight: 700; font-size: 0.9rem;
+  color: var(--gold-lt); background: linear-gradient(180deg, #3a2a1b, #251a11);
+  white-space: nowrap; cursor: pointer;
+  transition: color 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+}
+.track-end:hover { color: #fff6df; border-color: var(--gold); box-shadow: 0 0 18px rgba(216, 180, 90, 0.32); }
+.track-end.final { background: var(--grad-gold); color: #2a1809; border-color: var(--gold-lt); }
+.track-end.final:hover { filter: brightness(1.06); color: #2a1809; }
+
+/* ── The step the match is blocked on ────────────────────────
+   In the right margin, because putting it under the board would make the board
+   jump every time a card asked a question. */
+.step-panel {
+  width: 100%;
+  padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 8px;
+  border: 1px solid var(--gold-dk); border-radius: var(--r-sm);
+  background: linear-gradient(180deg, #3a2a1b, #241811);
+  box-shadow: 0 0 24px rgba(216, 150, 70, 0.22);
+  animation: fade-in 0.2s ease;
+}
+.step-panel.hidden { display: none; }
+/* A counter window closes on its own, so it has to be the loudest thing here. */
+.step-panel.urgent { border-color: #a4402c; box-shadow: 0 0 28px rgba(200, 70, 40, 0.42); }
+.step-panel.casting { border-color: var(--gold); box-shadow: 0 0 28px rgba(216, 180, 90, 0.38); }
+.step-panel .step-card-panel { display: contents; }
+.step-title { font-family: var(--display); font-weight: 700; font-size: 1rem; color: var(--gold-lt); }
+.step-body { font-size: 0.84rem; line-height: 1.45; }
+.step-note { font-size: 0.8rem; color: var(--muted); font-style: italic; }
+.step-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.step-cards { display: flex; flex-wrap: wrap; gap: 6px; max-height: 42vh; overflow-y: auto; }
+.tcg-card.step-card { width: 66px; cursor: pointer; }
+.tcg-card.step-card.blocked { filter: grayscale(0.7) brightness(0.55); }
+
+/* ── Decisions, in the middle ────────────────────────────────
+   A question you answer with a button belongs where you are already looking.
+   The layer never takes clicks — only the panel does — so the board and the
+   hand underneath stay live while it is up, which is what lets the pitch step
+   put its prompt here and still be answered from the hand rail. */
+.duel-modal {
+  position: fixed; inset: 0; z-index: 56;
+  display: grid; place-items: center;
+  padding: 20px;
+  pointer-events: none;
+}
+.duel-modal.hidden { display: none; }
+.duel-modal .step-card-panel {
+  pointer-events: auto;
+  width: min(92vw, 460px);
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 20px 22px; border-radius: var(--r);
+  background: linear-gradient(180deg, #3b2b1c, #221810);
+  border: 1px solid var(--gold-dk);
+  box-shadow: 0 0 50px rgba(216, 150, 70, 0.35), 0 22px 48px rgba(0, 0, 0, 0.75);
+  animation: zoom-pop 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.25);
+}
+.duel-modal.urgent .step-card-panel { border-color: #a4402c; box-shadow: 0 0 50px rgba(200, 70, 40, 0.45), 0 22px 48px rgba(0, 0, 0, 0.75); }
+.duel-modal.casting .step-card-panel { border-color: var(--gold); }
+.duel-modal .step-title { font-size: 1.2rem; }
+.duel-modal .step-body { font-size: 0.94rem; }
+.duel-modal .step-controls { justify-content: flex-end; gap: 10px; }
+.duel-modal .step-cards { width: 100%; justify-content: center; }
+.duel-modal .tcg-card.step-card { width: 84px; }
+
+/* ── A pile, laid out ────────────────────────────────────────
+   Which counters are already spent and what can still be fished back out are
+   real decisions, and a number on a stack is not something you can plan
+   against. */
+.pile-panel { width: min(94vw, 720px); }
+.pile-head { display: flex; align-items: baseline; gap: 10px; }
+.pile-count { font-family: var(--display); font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+.pile-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 10px; max-height: 60vh; overflow-y: auto; padding: 4px;
+}
+.tcg-card.pile-card { width: 100%; cursor: pointer; }
+
+/* ── The activation cut-in ───────────────────────────────────
+   A card resolves in one reducer step, so without this the only evidence it
+   was played is the board quietly changing. It flares up over the middle of
+   the field at full size and stays readable for five seconds. A click anywhere
+   skips the rest, and the controller stands it down the moment the engine
+   wants an answer — so it can never sit between you and your own turn. */
+.cut-in {
+  position: fixed; inset: 0; z-index: 62;
+  display: grid; place-items: center;
+  background: rgba(8, 5, 3, 0.42);
+  cursor: pointer;
+  animation: fade-in 0.18s ease;
+}
+.cut-in.hidden { display: none; }
+.cut-in-stage {
+  display: flex; flex-direction: column; gap: 10px;
+  width: min(92vw, 480px);
+  padding: 16px 19px; border-radius: var(--r);
+  background: radial-gradient(circle at 28% 24%, rgba(64, 44, 20, 0.98), rgba(11, 7, 4, 0.96));
+  border: 1px solid var(--gold-dk);
+  box-shadow: 0 0 60px rgba(216, 150, 70, 0.45), 0 20px 46px rgba(0, 0, 0, 0.75);
+  animation: cut-in var(--hold, 5000ms) cubic-bezier(0.2, 0.8, 0.25, 1) both;
+}
+.cut-in-stage.theirs { border-color: #8d3a2a; box-shadow: 0 0 60px rgba(200, 80, 50, 0.42), 0 20px 46px rgba(0, 0, 0, 0.75); }
+@keyframes cut-in {
+  0% { opacity: 0; transform: scale(0.6) rotate(-7deg); }
+  5% { opacity: 1; transform: scale(1.08) rotate(0deg); }
+  9% { transform: scale(1); }
+  90% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.04) translateY(-16px); }
+}
+.cut-in-skip { font-size: 0.68rem; letter-spacing: 0.1em; text-align: center; color: var(--muted); opacity: 0.7; }
+.cut-in-who { display: flex; align-items: baseline; gap: 9px; }
+.cut-in-side { font-family: var(--display); font-weight: 700; letter-spacing: 0.06em; color: var(--gold-lt); }
+.cut-in-stage.theirs .cut-in-side { color: #f0b6a2; }
+.cut-in-verb { font-size: 0.72rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+.cut-in-body { display: flex; gap: 15px; align-items: flex-start; }
+.cut-in-body .tcg-card.md { flex: 0 0 auto; width: 142px; }
+.cut-in-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.cut-in-name { font-family: var(--display); font-weight: 700; font-size: 1.15rem; line-height: 1.2; color: var(--gold-lt); }
+.cut-in-meta { display: flex; align-items: center; gap: 8px; font-size: 0.72rem; }
+.cut-in-kind { padding: 2px 9px; border-radius: 999px; color: var(--gold-lt); background: #4a3620; border: 1px solid var(--gold-dk); }
+.cut-in-cost { font-weight: 700; color: #9dbaea; }
+.cut-in-desc { margin: 0; font-size: 0.88rem; line-height: 1.5; color: var(--parch); }
+.cut-in-timer { height: 3px; border-radius: 999px; background: rgba(0, 0, 0, 0.55); overflow: hidden; }
+.cut-in-timer::after {
+  content: ""; display: block; height: 100%;
+  background: var(--grad-gold);
+  animation: cut-timer var(--hold, 5000ms) linear both;
+}
+@keyframes cut-timer { from { width: 100%; } to { width: 0; } }
+
+/* ── The turn announcement ───────────────────────────────────
+   Over the board for a beat when the turn changes, then gone. */
+.duel-screen .turn-text { font-size: clamp(1.9rem, 5.4vw, 3.2rem); padding: 12px 40px; }
+
+/* Result colouring, so a win and a loss are not the same gold card. */
+.overlay-msg.win { color: var(--gold-lt); text-shadow: 0 0 26px rgba(216, 180, 90, 0.55); }
+.overlay-msg.loss { color: #e5b6a6; }
+.overlay-msg.even { color: var(--parch-2); }
+
+/* Classic has no deck, so it has no hands, no cost and no steps — and gets an
+   even bigger board out of the deal. */
+.duel-screen:not(.carded) .hand-rail { display: none; }
+
+/* ── Where to click, right now ────────────────────────────────
+   `data-step` on the screen root carries the step the player is standing on
+   (see renderPhaseTrack), so the region that takes the click can light up. The
+   deck already beckoned on the draw; the other two steps said nothing at all,
+   which left "스킬 카드" as a heading rather than an instruction. */
+.duel-screen[data-step="skill"] .my-hand,
+.duel-screen[data-step="summon"] .my-hand {
+  border-radius: 14px;
+  box-shadow: inset 0 -2px 0 rgba(216, 180, 90, 0.5), 0 -14px 40px -14px rgba(216, 180, 90, 0.45);
+  animation: region-breathe 2.4s ease-in-out infinite;
+}
+.duel-screen[data-step="skill"] .hand-card.playable,
+.duel-screen[data-step="summon"] .hand-card.playable {
+  animation: card-beckon 2.4s ease-in-out infinite;
+}
+/* On the move step the board itself is the control. */
+.duel-screen[data-step="move"] .board-canvas {
+  border-color: var(--gold-dk);
+  box-shadow:
+    0 14px 44px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1px rgba(216, 180, 90, 0.15),
+    0 0 26px -4px rgba(216, 180, 90, 0.42);
+}
+@keyframes region-breathe {
+  0%, 100% { box-shadow: inset 0 -2px 0 rgba(216, 180, 90, 0.35), 0 -14px 34px -16px rgba(216, 180, 90, 0.3); }
+  50% { box-shadow: inset 0 -2px 0 rgba(216, 180, 90, 0.7), 0 -14px 44px -12px rgba(216, 180, 90, 0.6); }
+}
+@keyframes card-beckon {
+  0%, 100% { filter: none; }
+  50% { filter: drop-shadow(0 0 9px rgba(216, 180, 90, 0.55)); }
+}
+/* Motion is a preference, not a requirement. */
+@media (prefers-reduced-motion: reduce) {
+  .duel-screen[data-step] .my-hand,
+  .duel-screen[data-step] .hand-card.playable,
+  .zone-deck.ready { animation: none; }
+}
+
+@media (max-width: 1080px) {
+  .duel-flank { max-width: 190px; }
+  .track-step { padding: 5px 8px; font-size: 0.78rem; }
+  .track-step.on { padding: 8px 8px 8px 11px; font-size: 0.88rem; }
+  .track-turn { padding: 7px 9px; font-size: 0.9rem; }
+  .zone-stack { width: 36px; height: 50px; }
+  .zone-stack .tcg-card.xs { width: 36px; }
+}
+@media (max-width: 880px) {
+  /* No margins left to put anything in: the plates go side by side above the
+     board, the board takes the full width, and the steps and the feed drop
+     below it as a row. */
+  .duel-screen { padding: 6px 8px 8px; }
+  .duel-arena { flex-direction: column; gap: 6px; }
+  .duel-flank { max-width: none; width: 100%; flex: 0 0 auto; align-self: auto; flex-direction: row; gap: 8px; overflow: visible; }
+  .duel-flank.left { order: -1; }
+  .seat-side { flex: 1 1 0; min-width: 0; }
+  .seat-plate { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 8px; padding: 5px 10px; }
+  .seat-plate .clock-face { min-width: 68px; font-size: 1rem; }
+  .plate-side, .zone-field { display: none; }
+  .zone-stack { width: 30px; height: 42px; }
+  .zone-stack .tcg-card.xs { width: 30px; }
+  /* Width-bound here rather than height-bound, but still square: `height: auto`
+     with the canvas at `height: 100%` let the board stretch to 804x648 on a
+     tablet in portrait, which is a chessboard of rectangles. The vh cap is what
+     keeps a full-width square board from pushing the hand off a short screen. */
+  .duel-screen .board-wrap {
+    flex: 0 0 auto;
+    width: min(100%, 74vh); height: auto;
+    aspect-ratio: 1 / 1; min-height: 0;
+  }
+  /* Back to a strip when it is lying on its side: a four-row column beside a
+     full-width board would be taller than the board it describes. */
+  .phase-track { flex: 1 1 0; flex-direction: row; align-items: center; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+  .phase-track::-webkit-scrollbar { display: none; }
+  .track-turn { margin-bottom: 0; }
+  .track-step, .track-step.on { padding: 6px 9px; font-size: 0.8rem; }
+  .track-step.on.mine::after { display: none; }
+  .track-end { margin-top: 0; }
+  .duel-flank .action-log { margin-top: 0; }
+  .cut-in-body .tcg-card.md { width: 110px; }
+}
+
+/* ── The card, blown up ──────────────────────────────────────
+   A hand card is about a hundred pixels wide, which is not enough to read
+   rules text off. So clicking one opens it at full size with what it does, and
+   playing it is a second, deliberate click. */
+.zoom-overlay {
+  position: fixed; inset: 0; z-index: 80;
+  display: grid; place-items: center; padding: 20px;
+  background: rgba(8, 5, 3, 0.84);
+  backdrop-filter: blur(3px);
+  animation: fade-in 0.16s ease;
+}
+.zoom-panel {
+  width: min(94vw, 640px);
+  max-height: 92vh; overflow-y: auto;
+  padding: 22px 24px;
+  display: flex; flex-direction: column; gap: 18px;
+  animation: zoom-pop 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.25);
+}
+@keyframes zoom-pop {
+  from { opacity: 0; transform: scale(0.86) translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+.zoom-body { display: flex; align-items: flex-start; gap: 22px; }
+.zoom-body .tcg-card.lg { flex: 0 0 auto; width: 210px; cursor: default; }
+.zoom-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 9px; }
+.zoom-name { margin: 0; font-family: var(--display); font-size: 1.35rem; font-weight: 700; color: var(--gold-lt); line-height: 1.2; }
+.zoom-meta { display: flex; align-items: center; gap: 9px; font-size: 0.78rem; }
+.zoom-kind { padding: 3px 11px; border-radius: 999px; color: var(--gold-lt); background: #4a3620; border: 1px solid var(--gold-dk); }
+.zoom-cost { font-weight: 700; color: #9dbaea; }
+.zoom-desc { margin: 0; font-size: 0.98rem; line-height: 1.6; color: var(--parch); }
+/* Why it cannot be played — the card still opens, because knowing what you are
+   holding matters even on a turn you cannot spend it. */
+.zoom-note {
+  padding: 8px 12px; border-radius: var(--r-sm);
+  font-size: 0.86rem; color: #ffc0aa;
+  background: rgba(109, 53, 39, 0.28); border: 1px solid #6d3527;
+}
+.zoom-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+@media (max-width: 620px) {
+  .zoom-body { flex-direction: column; align-items: center; text-align: center; }
+  .zoom-body .tcg-card.lg { width: 168px; }
+  .zoom-actions { justify-content: center; }
+}
+
+/* ── The ladder ──────────────────────────────────────────────
+   Six tiers named after the pieces, so the emblem is the piece itself: a rank
+   made of the game's own vocabulary reads without a legend. */
+.rank-badge {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 14px; border-radius: var(--r-sm);
+  background: linear-gradient(180deg, #2c1f14, #1c130d);
+  border: 1px solid var(--frame);
+  box-shadow: var(--frame-in);
+}
+.rank-emblem {
+  width: 40px; height: 40px; flex: 0 0 auto;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.7));
+}
+.rank-emblem.placement {
+  display: grid; place-items: center;
+  font-family: var(--display); font-size: 1.4rem; font-weight: 700;
+  color: var(--muted);
+  border: 1px dashed var(--frame); border-radius: 50%;
+}
+.rank-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rank-name { font-family: var(--display); font-weight: 700; font-size: 1.02rem; color: var(--gold-lt); letter-spacing: 0.03em; }
+.rank-sub { font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.rank-bar { width: 100%; min-width: 150px; height: 5px; margin-top: 3px; border-radius: 999px; background: rgba(0, 0, 0, 0.5); overflow: hidden; }
+.rank-bar i { display: block; height: 100%; background: var(--grad-gold); box-shadow: 0 0 8px rgba(216, 180, 90, 0.6); }
+.rank-badge.lg { padding: 14px 18px; gap: 16px; }
+.rank-badge.lg .rank-emblem { width: 62px; height: 62px; }
+.rank-badge.lg .rank-name { font-size: 1.3rem; }
+.rank-badge.lg .rank-text { flex: 1; }
+/* Each tier borrows a little of its own colour, so the ladder reads as a ramp
+   rather than as six identical plates. */
+.rank-badge.t-pawn { border-color: #6a5a44; }
+.rank-badge.t-rook { border-color: #6f5330; }
+.rank-badge.t-bishop { border-color: #4c6032; }
+.rank-badge.t-knight { border-color: #3f5a72; }
+.rank-badge.t-queen { border-color: #6b4478; }
+.rank-badge.t-king { border-color: var(--gold); box-shadow: var(--frame-in), 0 0 26px rgba(216, 180, 90, 0.4); }
+.rank-panel { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.rank-hint { font-size: 0.82rem; color: var(--muted); font-style: italic; line-height: 1.5; }
+
+/* What the match just did to it, under the result. */
+.overlay-rank { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; }
+.rank-delta { font-family: var(--display); font-weight: 700; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.rank-delta.up { color: var(--good); }
+.rank-delta.down { color: var(--danger); }
+.rank-note { width: 100%; text-align: center; font-family: var(--display); letter-spacing: 0.1em; text-transform: uppercase; font-size: 0.8rem; color: var(--gold); }
+.overlay-rank.up .rank-note { color: var(--gold-lt); text-shadow: 0 0 18px rgba(216, 180, 90, 0.7); }
+.overlay-rank.down .rank-note { color: #e5b6a6; }
+
+/* ── First launch: your name ─────────────────────────────────
+   Every screen past this one prints a name; "Player" appearing on all of them
+   is the game admitting it never asked. */
+.nick-screen { justify-content: center; gap: 24px; }
+.nick-card { align-items: center; text-align: center; gap: 12px; }
+.nick-avatar .avatar { width: 62px; height: 62px; }
+.nick-title { margin: 0; font-family: var(--display); font-size: 1.24rem; font-weight: 700; color: var(--gold-lt); }
+.nick-body { margin: 0; font-size: 0.86rem; line-height: 1.5; color: var(--muted); }
+.nick-input { text-align: center; font-size: 1.1rem; letter-spacing: 0.04em; }
+
+/* ── Quick match: casual and ranked ──────────────────────────
+   The clock rides on the button. The two queues run different controls, and
+   finding that out on the lobby screen behind the button is finding out late. */
+.mode-label-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.mode-note { font-size: 0.74rem; letter-spacing: 0.04em; color: var(--muted); }
+.mode-card.ranked { border-color: var(--gold-dk); }
+.mode-card.ranked .mode-icon { filter: drop-shadow(0 0 9px rgba(216, 150, 70, 0.55)); }
+.mode-card.ranked .mode-label { color: var(--gold-lt); }
+.lobby-clock {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 15px; border-radius: 999px;
+  background: rgba(0, 0, 0, 0.32); border: 1px solid var(--frame);
+}
+.lobby-clock-label { font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.lobby-clock-value { font-family: var(--display); font-weight: 700; color: var(--gold-lt); }
+.lobby-card.ranked { border-color: var(--gold); box-shadow: var(--frame-in), 0 0 30px rgba(216, 150, 70, 0.28); }
 
 .hand-rail::-webkit-scrollbar { height: 9px; }
 .hand-rail::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.3); border-radius: 999px; }

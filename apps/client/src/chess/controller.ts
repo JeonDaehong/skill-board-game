@@ -1,19 +1,18 @@
 import {
   fileOf,
   generateLegalMoves,
-  makeSquare,
-  onBoard,
   opposite,
   rankOf,
   type Color,
+  type Piece,
   type PieceType,
-  type SkillRules,
   type Square,
 } from "@skill/chess-core";
 import {
   cardCost,
   isPieceCard,
   modeRules,
+  needsTargets,
   skillMeta,
   summonZone,
   usesCards,
@@ -25,7 +24,7 @@ import {
   type TargetSpec,
 } from "@skill/engine";
 import { el, type AppContext, type Screen } from "../router.js";
-import { BoardRenderer, preloadPieces, type RenderOptions } from "../render.js";
+import { animLength, BoardRenderer, preloadPieces, type BoardAnim, type RenderOptions } from "../render.js";
 import { cardToken, icon, type IconName } from "../ui/art.js";
 import { skillIcon } from "../skills.js";
 import { createLocalSession, type Session } from "./session.js";
@@ -33,12 +32,17 @@ import { draftAiDeck } from "./ai-deck.js";
 import type { SearchOptions } from "./ai.js";
 import { menuScreen } from "../screens/menu.js";
 import { deckForMatch } from "../decks.js";
-import { cardEl, fitNames } from "../ui/card.js";
+import { cardBackEl, cardEl, fitNames } from "../ui/card.js";
+import { createCutIn } from "../ui/cutin.js";
+import { closeCardZoom, openCardZoom, openPileView, type ZoomAction } from "../ui/card-zoom.js";
+import { getNickname } from "../player.js";
+import { recordRanked, type RankChange } from "../rank.js";
+import { rankBadge } from "../ui/rank-badge.js";
 import {
   createClock, formatClock, getTimeControlId, isUntimed, timeControlById,
   type Clock, type TimeControl,
 } from "../clock.js";
-import { cardName, t, tPassthrough } from "../i18n.js";
+import { cardName, modeName, pieceName, t, tPassthrough } from "../i18n.js";
 
 export interface ChessOptions {
   mode: GameMode;
@@ -79,20 +83,35 @@ const COUNTER_REASON: Record<CounterTrigger, string> = {
 };
 
 /**
- * The shared game screen. It never mutates game state directly — it renders the
- * session's MatchState and turns clicks into Actions. Works identically for a
- * local AI session and an online (server) session, and for all three modes:
- * the card rail simply does not appear when the mode has no deck.
+ * The shared game screen — a duel field rather than a stack of panels.
+ *
+ * Top to bottom: the opponent's nameplate and their hand as card backs, the
+ * board, the turn's steps spelled out across the middle, then your own plate
+ * and your hand. Everything that is commentary rather than control — the action
+ * feed, the card currently being answered — sits in the margins beside the
+ * board, so the board itself gets every pixel of height the screen can spare.
+ *
+ * It never mutates game state: it renders the session's MatchState and turns
+ * clicks into Actions, identically for a local AI session and an online one,
+ * and for all three modes — the card furniture simply does not appear when the
+ * mode has no deck.
  */
+export interface GameViewOptions {
+  /** A ladder match: the result moves the player's rank when it ends. */
+  ranked?: boolean;
+}
+
 export function mountGame(
   ctx: AppContext,
   session: Session,
   onExit: () => void,
   control: TimeControl = timeControlById(getTimeControlId()),
+  view: GameViewOptions = {},
 ): () => void {
   const me = session.myColor;
   const opp = opposite(me);
   const flipped = me === "b";
+  const myName = getNickname();
 
   // Purely local UI state (never leaves the client). Targeting itself is not
   // here: the engine owns which card is waiting on what, and this screen only
@@ -110,61 +129,154 @@ export function mountGame(
   const canvas = el("canvas", { class: "board-canvas" }) as HTMLCanvasElement;
   canvas.width = 640;
   canvas.height = 640;
-  const statusEl = el("div", { class: "game-status" });
   const overlay = el("div", { class: "game-overlay hidden" });
-  const oppStrip = el("div", { class: "opp-strip" });
-  const handRail = el("div", { class: "hand-rail" });
-  const resourceBar = el("div", { class: "resource-bar" });
-  const phaseBar = el("div", { class: "phase-bar" });
-  const stepPrompt = el("div", { class: "step-prompt hidden" });
-  const sacrificeBar = el("div", { class: "sacrifice-bar hidden" }, [
-    el("button", { class: "start-btn", text: t("game.endTurn"), onclick: () => session.dispatch({ type: "free-move-end" }) }),
-  ]);
+  const oppPlate = el("div", { class: "seat-plate opp" });
+  const myPlate = el("div", { class: "seat-plate me" });
+  // Deck, graveyard and the cards left standing on the field — the three piles
+  // a card game is actually played out of.
+  const oppZones = el("div", { class: "zone-block opp" });
+  const myZones = el("div", { class: "zone-block me" });
+  const oppHand = el("div", { class: "hand-rail opp-hand" });
+  const myHand = el("div", { class: "hand-rail my-hand" });
+  const phaseTrack = el("div", { class: "phase-track" });
+  const stepPanel = el("div", { class: "step-panel hidden" });
+  // A decision — take the draw or not, answer a counter or not — goes in the
+  // middle of the screen where it cannot be missed. Only the steps that are
+  // answered by clicking the board stay off to the side.
+  const stepModal = el("div", { class: "duel-modal hidden" });
   const toast = el("div", { class: "toast hidden" });
   // Everything that happens, said out loud: cards played, pieces summoned,
   // cards drawn and destroyed. A card game where effects resolve silently is a
   // card game nobody can follow.
   const actionLog = el("div", { class: "action-log" });
-  const playFlash = el("div", { class: "play-flash hidden" });
   // Whose turn it is, announced over the board and then gone. A line of text
   // that is always on screen stops being read; a card that appears when the
   // turn changes is read every time.
   const turnBanner = el("div", { class: "turn-banner hidden" });
+  const cutIn = createCutIn();
 
-  // Clocks bracket the board, opponent above and you below, the way a real
-  // clock sits between two players.
   const timed = !isUntimed(control);
   const oppClock = el("div", { class: "clock-face" });
   const myClock = el("div", { class: "clock-face" });
-  const clockRow = (who: "me" | "opp", face: HTMLElement) =>
-    el("div", { class: `clock-row ${who}` }, [
-      el("span", { class: "clock-who", text: who === "me" ? t("game.you") : t("game.opponent") }),
-      face,
-    ]);
 
-  ctx.root.appendChild(
-    el("div", { class: "screen chess-screen" }, [
-      // The board says which game this is; the top bar only needs the way out.
-      el("div", { class: "game-topbar" }, [
-        el("button", { class: "back-btn btn-small", text: t("common.leave"), onclick: () => tryLeave() }),
+  const mode = session.getState().mode;
+  const carded = usesCards(mode);
+
+  // The plates and the commentary live in the margins beside the board, not in
+  // rows above and below it: every row stacked into the column is height the
+  // board does not get, and on a wide screen the margins are free.
+  const screen = el("div", { class: `screen duel-screen${carded ? " carded" : ""}` }, [
+      el("div", { class: "duel-top" }, [
+        el("button", { class: "duel-exit", text: t("common.leave"), onclick: () => tryLeave() }),
+        el("span", { class: "game-mode-chip", text: modeName(mode) }),
       ]),
-      oppStrip,
-      timed ? clockRow("opp", oppClock) : null,
-      statusEl,
-      el("div", { class: "board-wrap" }, [canvas, overlay, playFlash, turnBanner]),
-      actionLog,
-      timed ? clockRow("me", myClock) : null,
-      resourceBar,
-      phaseBar,
-      stepPrompt,
-      sacrificeBar,
-      handRail,
+      oppHand,
+      // The turn's steps live in the right margin rather than in a row of their
+      // own between the board and the hand. That row cost the board 58px of
+      // height on every screen, and the margin it moved into was empty — so the
+      // board grew and the phase got read as a checklist instead of a strip.
+      el("div", { class: "duel-arena" }, [
+        el("div", { class: "duel-flank left" }, [
+          el("div", { class: "seat-side opp" }, [oppPlate, oppZones]),
+          el("div", { class: "seat-side me" }, [myZones, myPlate]),
+        ]),
+        el("div", { class: "board-wrap" }, [canvas, overlay, turnBanner]),
+        el("div", { class: "duel-flank right" }, [phaseTrack, stepPanel, actionLog]),
+      ]),
+      myHand,
+      stepModal,
+      cutIn.node,
       toast,
-    ]),
-  );
+  ]);
+  ctx.root.appendChild(screen);
 
   const clock: Clock = createClock(control);
   const renderer = new BoardRenderer(canvas);
+
+  /**
+   * The board as it was last painted, so the next state can be told apart from
+   * it. Diffing the board rather than reading the move out of the action is what
+   * makes a card that slides a piece animate like a move — 질주, 밀쳐내기,
+   * 위치 교환 and a summon are all board changes and none of them is a move.
+   */
+  let shownBoard: (Piece | null)[] = state().chess.board.slice();
+  let lastMove: { from: Square; to: Square } | null = null;
+
+  /** What changed between the painted board and this one, as animations. */
+  function diffBoard(next: (Piece | null)[]): BoardAnim[] {
+    const same = (a: Piece | null | undefined, b: Piece | null | undefined) =>
+      (!a && !b) || (!!a && !!b && a.color === b.color && a.type === b.type);
+    const left: number[] = [];
+    const arrived: number[] = [];
+    for (let sq = 0; sq < Math.max(shownBoard.length, next.length); sq++) {
+      const was = shownBoard[sq] ?? null;
+      const now = next[sq] ?? null;
+      if (same(was, now)) continue;
+      if (was) left.push(sq);
+      if (now) arrived.push(sq);
+    }
+    if (left.length === 0 && arrived.length === 0) return [];
+
+    const anims: BoardAnim[] = [];
+    const takenFrom = new Set<number>();
+    // Pair each arrival with a departure of the same piece. Nearest first, so a
+    // position where two identical pieces both moved does not cross them over.
+    for (const to of arrived) {
+      const piece = next[to]!;
+      const from = left
+        .filter((sq) => !takenFrom.has(sq) && same(shownBoard[sq], piece))
+        .sort((a, b) => squareDistance(a, to) - squareDistance(b, to))[0];
+      if (from === undefined) {
+        anims.push({ kind: "spawn", sq: to, piece });
+        continue;
+      }
+      takenFrom.add(from);
+      anims.push({ kind: "move", from, to, piece });
+    }
+    // Whatever left without arriving anywhere died where it stood.
+    for (const from of left) {
+      if (takenFrom.has(from)) continue;
+      anims.push({ kind: "slain", sq: from, piece: shownBoard[from]! });
+    }
+    return anims;
+  }
+
+  /**
+   * Squares that have picked up an enchant or a patch of terrain since the last
+   * paint. An enchant landing moves nothing, so without a flash of its own the
+   * only sign a 4-cost card resolved is a small badge appearing in a corner.
+   */
+  let shownMarks = new Set<Square>();
+  function newlyMarked(): Square[] {
+    const now = new Set(boardMarks().map((m) => m.sq));
+    const fresh = [...now].filter((sq) => !shownMarks.has(sq));
+    shownMarks = now;
+    return fresh;
+  }
+
+  /** Chebyshev distance, which is how a board measures "nearest". */
+  function squareDistance(a: Square, b: Square): number {
+    const s = state().chess;
+    return Math.max(Math.abs(fileOf(a, s) - fileOf(b, s)), Math.abs(rankOf(a, s) - rankOf(b, s)));
+  }
+
+  /**
+   * Take the new board, animate the difference, and remember the move so the
+   * board can keep showing where it came from. `lastMove` was wired through the
+   * renderer from the start and never given a value — every repaint passed null,
+   * so the highlight that says "this is what just happened" never appeared.
+   */
+  function absorbBoard(): BoardAnim[] {
+    const next = state().chess.board;
+    const anims = diffBoard(next);
+    const travelled = anims.filter((a): a is Extract<BoardAnim, { kind: "move" }> => a.kind === "move");
+    // The longest journey is the move; a card that shuffles several pieces at
+    // once has no single "last move" worth ringing.
+    if (travelled.length === 1) lastMove = { from: travelled[0]!.from, to: travelled[0]!.to };
+    else if (anims.length > 0) lastMove = null;
+    shownBoard = next.slice();
+    return anims;
+  }
 
   function state(): MatchState {
     return session.getState();
@@ -192,28 +304,32 @@ export function mountGame(
     let rOpts: RenderOptions;
 
     if (pending?.kind === "free-moves" && freeMoveSource !== null) {
-      rOpts = { selected: freeMoveSource, targets: quietDests(freeMoveSource), lastMove: null, flipped };
+      rOpts = { selected: freeMoveSource, targets: quietDests(freeMoveSource), lastMove, flipped, mine: me };
     } else if (pending?.kind === "summon-place") {
-      rOpts = { selected: null, targets: [], lastMove: null, flipped, zone: summonZone(s, me) };
+      rOpts = { selected: null, targets: [], lastMove, flipped, mine: me, zone: summonZone(s, me) };
     } else if (pending?.kind === "targeting") {
-      rOpts = { selected: pickedSquares(pending)[0] ?? null, targets: targetSquares(pending), lastMove: null, flipped };
+      rOpts = { selected: pickedSquares(pending)[0] ?? null, targets: targetSquares(pending), lastMove, flipped, mine: me };
     } else if (selected !== null) {
-      rOpts = { selected, targets: legalTargets(selected), lastMove: null, flipped };
+      rOpts = { selected, targets: legalTargets(selected), lastMove, flipped, mine: me };
     } else {
-      rOpts = { selected: null, targets: [], lastMove: null, flipped };
+      rOpts = { selected: null, targets: [], lastMove, flipped, mine: me };
     }
     rOpts.stuck = stuckSquares();
     rOpts.marks = boardMarks();
 
     renderer.render(s.chess, rOpts);
+    // A card being admired is not worth a turn spent waiting: the moment the
+    // engine wants an answer out of us, the cut-in stands down.
+    if (pending) cutIn.dismiss();
     announceTurn();
-    sacrificeBar.classList.toggle("hidden", pending?.kind !== "free-moves");
-    renderStatus();
-    renderResources();
-    renderPhases();
-    renderStepPrompt();
+    renderPlate(oppPlate, opp);
+    renderPlate(myPlate, me);
+    renderZones(oppZones, opp);
+    renderZones(myZones, me);
+    renderPhaseTrack();
+    renderStepPanel();
     renderHand();
-    renderOppStrip();
+    renderOppHand();
 
     if (s.status === "ended") { clock.stop(); renderClocks(); scheduleGameOver(); return; }
     if (overlayTimer) { clearTimeout(overlayTimer); overlayTimer = undefined; }
@@ -273,13 +389,6 @@ export function mountGame(
     return [...out];
   }
 
-  function emptySquares(): Square[] {
-    const board = state().chess.board;
-    const out: Square[] = [];
-    for (let sq = 0; sq < board.length; sq++) if (!board[sq]) out.push(sq);
-    return out;
-  }
-
   // ── clocks ─────────────────────────────────────────────────
   /** Park the running clock on whoever the engine is waiting for. Idempotent,
    *  so it can ride along with every repaint. */
@@ -309,152 +418,256 @@ export function mountGame(
     node.classList.toggle("byoyomi", inByoyomi);
   }
 
-  function renderStatus(): void {
+  // ── the nameplates ─────────────────────────────────────────
+  /**
+   * One side's standing: who they are, what they can spend, how much deck is
+   * left, and what they have in play. Both plates are built the same way, which
+   * is the point — a resource you can see on yourself and not on the opponent
+   * is a resource you cannot plan against.
+   */
+  function renderPlate(node: HTMLElement, who: Color): void {
     const s = state();
-    if (s.status === "ended") return;
-    const pending = myStep();
-    if (pending) {
-      statusEl.textContent =
-        pending.kind === "free-moves"
-          ? t("play.freeMoves").replace("{n}", String(pending.movesLeft))
-        : pending.kind === "targeting" ? targetPrompt(pending)
-        : pending.kind === "arrange" ? t("play.arrange")
-        : pending.kind === "summon-place" ? t("summon.pick")
-        : pending.kind === "discard" ? t("draw.pick")
-        : pending.kind === "draw-choice" ? t("draw.title")
-        : t("counter.title");
-      return;
-    }
-    if (state().pending) {
-      // The opponent owes an answer — most visibly, a counter window.
-      statusEl.textContent = state().pending?.kind === "counter"
-        ? t("counter.waiting")
-        : t("game.oppTurn");
-      return;
-    }
-    if (s.moveSpent && s.phase === "move" && myTurn()) {
-      statusEl.textContent = t("play.moveSpent");
-      return;
-    }
-    // Whose turn it is is announced by the banner and, when there are clocks,
-    // by which clock is lit. Repeating it here permanently only adds a line of
-    // text nobody reads — so the status line goes quiet unless it has something
-    // to ask for, or there is no clock to say it instead.
-    statusEl.textContent = timed ? "" : myTurn() ? t("game.yourTurn") : t("game.oppTurn");
-  }
-
-  /** Cost pips, deck count and discard count — the numbers behind the hand. */
-  function renderResources(): void {
-    if (!cards()) {
-      resourceBar.replaceChildren();
-      resourceBar.classList.add("hidden");
-      return;
-    }
-    resourceBar.classList.remove("hidden");
-    const s = state();
+    const p = s.players[who];
+    const mine = who === me;
     const cap = modeRules(s.mode).costCap;
-    const mine = s.players[me];
-    const theirs = s.players[opp];
 
-    const pips = el("div", { class: "cost-pips" },
-      Array.from({ length: cap }, (_, i) =>
-        el("i", { class: i < mine.cost ? "on" : "" }),
-      ),
-    );
+    node.classList.toggle("active", s.status === "playing" && actor() === who);
 
-    resourceBar.replaceChildren(
-      el("div", { class: "res-group" }, [
-        el("span", { class: "res-label", text: t("play.cost") }),
-        pips,
-        el("span", { class: "res-value", text: `${mine.cost}/${cap}` }),
-      ]),
-      el("div", { class: "res-group" }, [
-        el("span", { class: "res-label", text: t("play.deckLeft") }),
-        el("span", { class: "res-value", text: String(mine.library.length) }),
-      ]),
-      el("div", { class: "res-group" }, [
-        el("span", { class: "res-label", text: t("play.discard") }),
-        el("span", { class: "res-value", text: String(mine.discard.length) }),
-      ]),
-      el("div", { class: "res-group opp" }, [
-        el("span", { class: "res-label", text: t("game.opponent") }),
-        el("span", { class: "res-value", text: `◈${theirs.cost} · ✋${theirs.hand.length}` }),
-      ]),
-    );
+    // The clock rides on the head row, beside the name. It used to be the last
+    // child of the plate, which made it the first thing to disappear when the
+    // margin ran out of height — on a 768px screen your own clock was cut off
+    // the board entirely.
+    const bits: (Node | null)[] = [
+      el("div", { class: "plate-head" }, [
+        icon("avatar", "plate-avatar"),
+        el("div", { class: "plate-id" }, [
+          el("span", { class: "plate-name", text: mine ? myName : t("game.opponent") }),
+          el("span", { class: "plate-side", text: who === "w" ? t("game.white") : t("game.black") }),
+        ]),
+        timed ? (mine ? myClock : oppClock) : null,
+      ].filter((n): n is HTMLElement => !!n)),
+    ];
+
+    // The piles used to be chips here; they are real zones now (renderZones),
+    // so the plate is down to identity, money and the clock.
+    if (cards()) {
+      // Cost granted for this turn only (준비 태세, the gambling den's better
+      // rolls) is shown beside the bank rather than folded into it. The plate used
+      // to print `p.cost` alone, so playing a card that reads "이번 턴 코스트 +2"
+      // spent 1 and moved the number *down* — the grant was real and spendable,
+      // and the only place in the game that never mentioned it was the one place
+      // you look to see what you can afford.
+      bits.push(
+        el("div", { class: "plate-cost" }, [
+          el("div", { class: "cost-pips" }, [
+            ...Array.from({ length: cap }, (_, i) => el("i", { class: i < p.cost ? "on" : "" })),
+            ...Array.from({ length: p.bonusCost }, () => el("i", { class: "bonus" })),
+          ]),
+          el("span", { class: "plate-num", text: `${p.cost}/${cap}` }),
+          p.bonusCost > 0
+            ? el("span", { class: "plate-bonus", text: `+${p.bonusCost}` })
+            : null,
+        ].filter((n): n is HTMLElement => !!n)),
+      );
+    }
+
+    node.replaceChildren(...bits.filter((n): n is Node => !!n));
   }
 
   /**
-   * The turn's steps, with the current one lit. It doubles as the control for
-   * moving on: the "next step" button advances the phase, and once there is
-   * nothing left to do it ends the turn.
+   * The three piles: the deck you draw from, the graveyard used and destroyed
+   * cards fall into, and the field where 지속 cards sit while they are changing
+   * the rules. Both sides get all three — a lasting card is public because it
+   * is rewriting the game both players are playing.
    */
-  function renderPhases(): void {
+  function renderZones(node: HTMLElement, who: Color): void {
     const s = state();
-    if (!cards() || s.status !== "playing") {
-      phaseBar.replaceChildren();
-      phaseBar.classList.add("hidden");
+    const p = s.players[who];
+    const mine = who === me;
+    if (!cards()) {
+      node.replaceChildren();
+      node.classList.add("hidden");
       return;
     }
-    phaseBar.classList.remove("hidden");
+    node.classList.remove("hidden");
+
+    // Your own deck is the draw: on your draw step it lights up and takes the
+    // click, which is the one moment the deck is a thing you touch.
+    const canDraw = mine && myTurn() && !s.pending && s.phase === "draw";
+    const deck = el("button", {
+      class: `zone zone-deck${canDraw ? " ready" : ""}${p.library.length === 0 ? " spent" : ""}`,
+    }, [
+      el("div", { class: "zone-stack" }, [p.library.length > 0 ? cardBackEl("xs") : null]),
+      el("span", { class: "zone-label", text: t("zone.deck") }),
+      el("span", { class: "zone-count", text: String(p.library.length) }),
+    ]);
+    // The ring and the "덱을 클릭하세요" line in the step panel say this now, so
+    // the pill that used to hang under the pile is gone — it sat on top of the
+    // field row below it.
+    if (canDraw) deck.onclick = () => session.dispatch({ type: "draw" });
+
+    const top = p.discard[p.discard.length - 1];
+    const grave = el("button", { class: "zone zone-grave" }, [
+      el("div", { class: "zone-stack" }, [top ? cardEl(top, "xs") : null]),
+      el("span", { class: "zone-label", text: t("zone.grave") }),
+      el("span", { class: "zone-count", text: String(p.discard.length) }),
+    ]);
+    grave.onclick = () => openPileView(`${mine ? t("game.you") : t("game.opponent")} · ${t("zone.grave")}`, p.discard);
+
+    // An empty field is one line, not a box: two sides' worth of dashed
+    // "nothing here" was 100px of the margin's height, and the margin is where
+    // the nameplates live.
+    const field = el("div", { class: `zone-field${p.lasting.length === 0 ? " empty" : ""}` }, [
+      el("span", { class: "zone-label", text: t("zone.field") }),
+      p.lasting.length === 0
+        ? el("span", { class: "zone-none", text: t("zone.none") })
+        : el("div", { class: "zone-field-cards" },
+            p.lasting.map((l) => {
+              const card = cardEl(l.card, "xs");
+              card.classList.add("field-card");
+              card.onclick = () => openCardZoom({ card: l.card });
+              return card;
+            }),
+          ),
+    ]);
+
+    node.replaceChildren(el("div", { class: "zone-row" }, [deck, grave]), field);
+    fitNames(node);
+  }
+
+  // ── the turn's steps ───────────────────────────────────────
+  /**
+   * The turn spelled out across the middle of the screen: whose turn it is,
+   * then draw → summon → skill → move → end, with the current step lit. It is
+   * also the control for moving on — the trailing button advances the phase,
+   * and on the last step it ends the turn.
+   */
+  function renderPhaseTrack(): void {
+    const s = state();
+    const mineNow = myTurn() && !s.pending;
+    const turnMine = actor() === me;
+
+    // The step is also published on the screen root, so the region you are meant
+    // to be clicking can light up: the deck on the draw, your hand on the skill
+    // step, the board on the move. A step you have to read about is a step you
+    // have to be taught; a step that glows is one you can see.
+    screen.dataset.step = mineNow && s.status === "playing" ? s.phase : "";
+
+    const nodes: (Node | null)[] = [
+      el("div", { class: `track-turn ${turnMine ? "mine" : "theirs"}` }, [
+        el("span", { class: "track-turn-dot" }),
+        el("span", { text: turnMine ? t("game.turnMine") : t("game.turnTheirs") }),
+      ]),
+    ];
+
+    if (!cards() || s.status !== "playing") {
+      phaseTrack.classList.add("simple");
+      phaseTrack.replaceChildren(...nodes.filter((n): n is Node => !!n));
+      return;
+    }
+    phaseTrack.classList.remove("simple");
+
     const steps: { key: MatchState["phase"]; label: string }[] = [
       { key: "draw", label: t("play.phaseDraw") },
       ...(modeRules(s.mode).pieceCards ? [{ key: "summon" as const, label: t("play.phaseSummon") }] : []),
       { key: "skill", label: t("play.phaseSkill") },
       { key: "move", label: t("play.phaseMove") },
     ];
-    const mine = myTurn() && !s.pending;
 
-    const chips = steps.map((step) =>
-      el("span", {
-        class: `phase-chip${mine && s.phase === step.key ? " active" : ""}${
-          s.moveSpent && step.key === "move" ? " spent" : ""
-        }`,
-      }, [
-        icon(`phase-${step.key}` as IconName, "phase-icon"),
-        el("span", { text: step.label }),
-      ]),
-    );
+    // What the click actually is, spelled out on the step you are standing on.
+    // The labels named the steps from the start and never said what to do with
+    // them, so "스킬 카드" was a heading rather than an instruction.
+    const TODO: Record<MatchState["phase"], string> = {
+      draw: "play.doDraw",
+      summon: "play.doSummon",
+      skill: "play.doSkill",
+      move: "play.doMove",
+    };
+
+    for (const step of steps) {
+      const on = s.phase === step.key;
+      const spent = s.moveSpent && step.key === "move";
+      nodes.push(
+        el("div", {
+          class: `track-step${on ? " on" : ""}${on && turnMine ? " mine" : ""}${spent ? " spent" : ""}`,
+        }, [
+          icon(`phase-${step.key}` as IconName, "track-icon"),
+          el("div", { class: "track-text" }, [
+            el("span", { class: "track-label", text: step.label }),
+            on && !spent
+              ? el("span", {
+                  class: "track-todo",
+                  text: mineNow ? t(TODO[step.key] as never) : t("play.waitTheirs"),
+                })
+              : null,
+          ].filter((n): n is HTMLElement => !!n)),
+        ]),
+      );
+    }
 
     // Passing is only offered while there is a later step to reach; on the move
     // step the same button becomes "end turn", which is what it actually does.
-    const nodes: HTMLElement[] = [el("div", { class: "phase-chips" }, chips)];
-    if (mine) {
-      nodes.push(
-        s.phase !== "move"
-          ? el("button", { class: "btn btn-ghost btn-small", text: t("play.next"), onclick: () => session.dispatch({ type: "pass-phase" }) })
-          : el("button", { class: "btn btn-ghost btn-small", text: t("game.endTurn"), onclick: () => session.dispatch({ type: "end-turn" }) }),
-      );
-    }
-    phaseBar.replaceChildren(...nodes);
+    nodes.push(
+      mineNow
+        ? el("button", {
+            class: `track-end${s.phase === "move" ? " final" : ""}`,
+            text: s.phase === "move" ? t("game.endTurn") : t("play.next"),
+            onclick: () => session.dispatch(s.phase === "move" ? { type: "end-turn" } : { type: "pass-phase" }),
+          })
+        : el("div", { class: "track-step waiting" }, [
+            el("span", { class: "track-label", text: t("game.endTurn") }),
+          ]),
+    );
+
+    phaseTrack.replaceChildren(...nodes.filter((n): n is Node => !!n));
   }
 
+  // ── the step that is blocking ──────────────────────────────
   /**
-   * The strip for a step that needs an answer off the board: the draw choice, a
-   * counter window, and the parts of targeting a board click cannot express —
-   * a discard pile to fish in, a promotion to choose, a variable step to close.
+   * The one thing the game is waiting on.
+   *
+   * Where it goes depends on how it is answered. A question you settle with a
+   * button — take the draw or not, answer this counter or not — goes in the
+   * middle of the screen, because a decision tucked into a margin is a decision
+   * players miss. A step you answer by clicking the board stays in the margin,
+   * because the board is what you need to be looking at.
    */
-  function renderStepPrompt(): void {
+  function renderStepPanel(): void {
     const pending = myStep();
-    const kinds = ["draw-choice", "counter", "targeting", "arrange"];
-    if (!pending || !kinds.includes(pending.kind)) {
-      stepPrompt.replaceChildren();
-      stepPrompt.classList.add("hidden");
-      return;
-    }
-    stepPrompt.classList.remove("hidden");
+    stepPanel.replaceChildren();
+    stepPanel.classList.add("hidden");
+    stepModal.replaceChildren();
+    stepModal.classList.add("hidden");
+    if (!pending) return;
 
-    if (pending.kind === "targeting") return renderTargetPrompt(pending);
+    if (pending.kind === "targeting") return renderTargetPanel(pending);
+
+    if (pending.kind === "free-moves") {
+      return fill("side", t("play.freeMovesTitle"), t("play.freeMoves").replace("{n}", String(pending.movesLeft)), [
+        el("button", { class: "btn btn-primary btn-small", text: t("game.endTurn"), onclick: () => session.dispatch({ type: "free-move-end" }) }),
+      ]);
+    }
+
+    if (pending.kind === "summon-place") {
+      return fill("side", t("play.phaseSummon"), t("summon.pick"), []);
+    }
+
+    // Pitching is answered from the hand, and the modal does not cover it —
+    // the rail sits below where the panel lands.
+    if (pending.kind === "discard") {
+      return fill("centre", t("draw.pick"), t("draw.pickBody"), []);
+    }
 
     if (pending.kind === "arrange") {
       // 점술: the looked-at cards go back in the order they are clicked, and the
       // last one clicked is the one the next draw takes.
       const order: number[] = [];
       const row = el("div", { class: "step-cards" });
-      const paint = () => {
+      const paint = (): void => {
         row.replaceChildren(
           ...pending.cards.map((id, i) => {
             const node = cardEl(id, "sm");
-            node.classList.add("hand-card", order.includes(i) ? "blocked" : "playable");
+            node.classList.add("step-card", order.includes(i) ? "blocked" : "playable");
             const at = order.indexOf(i);
             if (at >= 0) node.appendChild(el("span", { class: "card-block", text: `#${order.length - at}` }));
             node.onclick = () => {
@@ -469,50 +682,77 @@ export function mountGame(
         fitNames(row);
       };
       paint();
-      stepPrompt.replaceChildren(
-        el("span", { class: "step-title", text: t("play.arrange") }),
-        row,
-      );
-      return;
+      return fill("centre", t("play.arrangeTitle"), t("play.arrange"), [row]);
     }
 
     if (pending.kind === "draw-choice") {
-      stepPrompt.replaceChildren(
-        el("span", { class: "step-title", text: t("draw.title") }),
-        el("span", {
-          class: "step-body",
-          text: t("draw.body").replace("{n}", String(state().players[me].hand.length)),
-        }),
-        el("button", { class: "btn btn-ghost btn-small", text: t("draw.skip"), onclick: () => session.dispatch({ type: "draw-skip" }) }),
-        el("button", { class: "btn btn-primary btn-small", text: t("draw.take"), onclick: () => session.dispatch({ type: "draw-take" }) }),
-      );
-      return;
+      return fill("centre", t("draw.title"), t("draw.body").replace("{n}", String(state().players[me].hand.length)), [
+        el("button", { class: "btn btn-ghost", text: t("draw.skip"), onclick: () => session.dispatch({ type: "draw-skip" }) }),
+        el("button", { class: "btn btn-primary", text: t("draw.take"), onclick: () => session.dispatch({ type: "draw-take" }) }),
+      ]);
     }
 
-    // A counter window: say what is being answered, and let them decline.
+    // A counter window. The cards that actually answer it are laid out here
+    // rather than left to be hunted for in the hand — the window closes, and
+    // "which of my cards was a counter again" is not a decision, it is a
+    // memory test.
     if (pending.kind !== "counter") return;
-    stepPrompt.replaceChildren(
-      icon("counter-horn", "step-icon"),
-      el("span", { class: "step-title", text: t("counter.title") }),
-      el("span", { class: "step-body", text: t(COUNTER_REASON[pending.trigger] as never) }),
-      el("button", { class: "btn btn-ghost btn-small", text: t("counter.pass"), onclick: () => session.dispatch({ type: "counter-pass" }) }),
+    const s = state();
+    const p = s.players[me];
+    const purse = p.cost + p.bonusCost;
+    const answers = p.hand
+      .map((id, index) => ({ id, index }))
+      .filter(({ id }) => {
+        const meta = skillMeta(id);
+        return meta?.speed === "counter"
+          && meta.trigger === pending.trigger
+          && cardCost(id, s, me) <= purse;
+      });
+
+    const controls: (Node | null)[] = [];
+    if (answers.length === 0) {
+      controls.push(el("span", { class: "step-note", text: t("counter.none") }));
+    } else {
+      controls.push(
+        el("div", { class: "step-cards" },
+          answers.map(({ id, index }) => {
+            const node = cardEl(id, "sm");
+            node.classList.add("step-card", "playable");
+            node.onclick = () => onHandClick(id, index);
+            return node;
+          }),
+        ),
+      );
+    }
+    controls.push(el("button", { class: "btn btn-ghost", text: t("counter.pass"), onclick: () => session.dispatch({ type: "counter-pass" }) }));
+    fill("centre", t("counter.title"), t(COUNTER_REASON[pending.trigger] as never), controls, "urgent");
+  }
+
+  /** Lay out the step panel, in the margin or in the middle of the screen. */
+  function fill(where: "side" | "centre", title: string, body: string, controls: (Node | null)[], tone = ""): void {
+    const host = where === "centre" ? stepModal : stepPanel;
+    host.className = where === "centre" ? `duel-modal ${tone}`.trim() : `step-panel ${tone}`.trim();
+    host.replaceChildren(
+      el("div", { class: "step-card-panel" }, [
+        el("div", { class: "step-title", text: title }),
+        el("div", { class: "step-body", text: body }),
+        el("div", { class: "step-controls" }, controls),
+      ]),
     );
+    fitNames(host);
   }
 
   /**
    * What a card is waiting for. Squares are picked on the board; everything
    * else — a card in a pile, one of a fixed set of answers — is picked here.
    */
-  function renderTargetPrompt(p: Targeting): void {
+  function renderTargetPanel(p: Targeting): void {
     const spec = currentSpec(p);
-    const nodes: (Node | null)[] = [
-      el("span", { class: "step-title", text: cardName(p.card) }),
-      el("span", { class: "step-body", text: targetPrompt(p) }),
-    ];
+    const controls: (Node | null)[] = [];
 
     if (spec?.kinds.includes("choice")) {
       for (const option of spec.options ?? []) {
-        nodes.push(el("button", {
+        controls.push(el("button", {
           class: "btn btn-primary btn-small",
           text: t(`option.${option}` as never),
           onclick: () => pick({ type: "target", option }),
@@ -522,21 +762,64 @@ export function mountGame(
 
     if (spec?.kinds.includes("discard")) {
       const pile = state().players[me].discard;
-      const row = el("div", { class: "step-cards" },
-        pile.map((id, i) => {
-          const node = cardEl(id, "sm");
-          node.classList.add("hand-card", "playable");
-          node.onclick = () => pick({ type: "target", index: i });
-          return node;
-        }),
+      controls.push(
+        pile.length === 0
+          ? el("span", { class: "step-note", text: t("play.discardEmpty") })
+          : el("div", { class: "step-cards" },
+              pile.map((id, i) => {
+                const node = cardEl(id, "sm");
+                node.classList.add("step-card", "playable");
+                node.onclick = () => pick({ type: "target", index: i });
+                return node;
+              }),
+            ),
       );
-      nodes.push(pile.length === 0 ? el("span", { class: "step-body", text: t("play.discardEmpty") }) : row);
+    }
+
+    // A card in the opponent's hand is answered here too, not only by hunting
+    // for the right 58px card back at the top edge of the screen. Ones a skill
+    // has already looked at are face up; the rest are backs, in hand order.
+    if (spec?.kinds.includes("opp-hand")) {
+      const s = state();
+      const oppCards = s.players[opp].hand;
+      const seen = new Set(s.players[me].revealed);
+      controls.push(
+        oppCards.length === 0
+          ? el("span", { class: "step-note", text: t("play.handEmpty") })
+          : el("div", { class: "step-cards" },
+              oppCards.map((id, i) => {
+                const known = seen.has(i) && id !== "hidden";
+                const node = known ? cardEl(id, "sm") : cardBackEl("sm");
+                node.classList.add("step-card", "playable");
+                node.onclick = () => pick({ type: "target", index: i });
+                return node;
+              }),
+            ),
+      );
+    }
+
+    // Same for a card in your own hand: the rail below is dimmed while a card
+    // is casting, which reads as "not now" exactly when it means "pick one".
+    if (spec?.kinds.includes("own-hand")) {
+      const hand = state().players[me].hand;
+      controls.push(
+        hand.length === 0
+          ? el("span", { class: "step-note", text: t("play.handEmpty") })
+          : el("div", { class: "step-cards" },
+              hand.map((id, i) => {
+                const node = cardEl(id, "sm");
+                node.classList.add("step-card", "playable");
+                node.onclick = () => pick({ type: "target", index: i });
+                return node;
+              }),
+            ),
+      );
     }
 
     if (spec?.kinds.includes("lasting")) {
       for (const color of [me, opp] as Color[]) {
         for (const l of state().players[color].lasting) {
-          nodes.push(el("button", {
+          controls.push(el("button", {
             class: "btn btn-ghost btn-small",
             text: `${color === me ? "▲" : "▼"} ${cardName(l.card)}`,
             onclick: () => pick({ type: "target", index: l.id }),
@@ -547,23 +830,26 @@ export function mountGame(
 
     // A step that takes a range of picks needs a way to say "that is enough".
     if (spec && spec.max > spec.min) {
-      nodes.push(el("button", {
+      controls.push(el("button", {
         class: "btn btn-primary btn-small",
         text: t("target.done"),
         onclick: () => pick({ type: "target-done" }),
       }));
     }
-    nodes.push(el("button", {
+    controls.push(el("button", {
       class: "btn btn-ghost btn-small",
       text: t("common.cancel"),
       onclick: () => pick({ type: "target-cancel" }),
     }));
 
-    stepPrompt.replaceChildren(...nodes.filter((n): n is Node => !!n));
-    fitNames(stepPrompt);
+    // A step answered by picking one of a handful of written answers is a
+    // decision like any other, so it gets the middle of the screen; a step
+    // answered by clicking a square stays out of the board's way.
+    const written = !!spec && !spec.kinds.some((k) => k === "own-piece" || k === "enemy-piece" || k === "empty");
+    fill(written ? "centre" : "side", cardName(p.card), targetPrompt(p), controls, "casting");
   }
 
-  // ── the hand ───────────────────────────────────────────────
+  // ── the hands ──────────────────────────────────────────────
   /** Why a card in hand cannot be played right now, or null if it can. */
   function blockedReason(cardId: string, index: number): string | null {
     const s = state();
@@ -602,109 +888,259 @@ export function mountGame(
     return null;
   }
 
+  /**
+   * A hand rail is rebuilt from scratch, which would restart — or cut short —
+   * the deal animation on every repaint, and a match repaints many times a
+   * turn for the clock alone. So each rail remembers what it last drew and
+   * skips the rebuild when nothing about it changed, and holds off entirely
+   * while cards are still in the air.
+   */
+  interface Rail {
+    sig: string;
+    /** How many cards this rail has settled, so only the new ones fly in. */
+    dealt: number;
+    /** When the cards currently in flight will have landed. */
+    busyUntil: number;
+    retry?: number;
+  }
+  const mineRail: Rail = { sig: "", dealt: 0, busyUntil: 0 };
+  const theirsRail: Rail = { sig: "", dealt: 0, busyUntil: 0 };
+
+  /** True when the caller should back off and let a deal finish first. */
+  function railBusy(rail: Rail, repaint: () => void): boolean {
+    const wait = rail.busyUntil - Date.now();
+    if (wait <= 0) return false;
+    if (rail.retry === undefined) {
+      rail.retry = window.setTimeout(() => { rail.retry = undefined; repaint(); }, wait + 20);
+    }
+    return true;
+  }
+
   function renderHand(): void {
     const s = state();
     if (!cards()) {
-      handRail.replaceChildren();
-      handRail.classList.add("hidden");
+      if (mineRail.sig === "-") return;
+      mineRail.sig = "-";
+      myHand.replaceChildren();
       return;
     }
-    handRail.classList.remove("hidden");
     const hand = s.players[me].hand;
     const pending = myStep();
     const discarding = pending?.kind === "discard";
+    const casting = pending?.kind === "targeting" ? pending.card : "";
+
+    const blocks = hand.map((id, i) => blockedReason(id, i) ?? "");
+    const sig = `${hand.join(",")}|${blocks.join(",")}|${discarding}|${casting}`;
+    if (sig === mineRail.sig) return;
+    if (railBusy(mineRail, renderHand)) return;
+    mineRail.sig = sig;
+
+    // Cards are pushed onto the end of the hand, so anything past the count we
+    // last settled is freshly drawn and gets to fly out of the deck.
+    const firstFresh = hand.length > mineRail.dealt ? mineRail.dealt : hand.length;
+    mineRail.dealt = hand.length;
 
     if (hand.length === 0) {
-      handRail.replaceChildren(el("div", { class: "hand-empty", text: t("play.hand") }));
+      myHand.replaceChildren(el("div", { class: "hand-empty", text: t("play.handEmpty") }));
       return;
     }
 
-    handRail.replaceChildren(
-      ...hand.map((cardId, i) => {
-        const blocked = blockedReason(cardId, i);
-        const node = cardEl(cardId, "sm");
-        node.classList.add("hand-card");
-        node.classList.toggle("playable", !blocked);
-        node.classList.toggle("blocked", !!blocked);
-        if (discarding) node.classList.add("pitchable");
-        if (pending?.kind === "targeting" && pending.card === cardId) node.classList.add("casting");
-        if (blocked) node.appendChild(el("span", { class: "card-block", text: blocked }));
-        node.onclick = () => onHandClick(cardId, i);
-        return node;
-      }),
-    );
-    fitNames(handRail);
+    const slots = hand.map((cardId, i) => {
+      const blocked = blocks[i];
+      const node = cardEl(cardId, "sm");
+      node.classList.add("hand-card");
+      node.classList.toggle("playable", !blocked);
+      node.classList.toggle("blocked", !!blocked);
+      if (discarding) node.classList.add("pitchable");
+      if (casting === cardId) node.classList.add("casting");
+      if (blocked) node.appendChild(el("span", { class: "card-block", text: blocked }));
+      node.onclick = () => onHandClick(cardId, i);
+      if (i >= firstFresh) node.classList.add("pre-deal");
+
+      const slot = el("div", { class: "hand-slot" }, [node]);
+      slot.style.setProperty("--i", String(i));
+      slot.style.setProperty("--n", String(hand.length));
+      return slot;
+    });
+
+    myHand.replaceChildren(...slots);
+    fitNames(myHand);
+    dealIn(slots.slice(firstFresh).map((s2) => s2.firstElementChild as HTMLElement), myZones, mineRail);
   }
 
-  function onHandClick(cardId: string, index: number): void {
-    const pending = myStep();
-    if (pending?.kind === "targeting") {
-      if (currentSpec(pending)?.kinds.includes("own-hand")) pick({ type: "target", index });
-      return;
-    }
-    if (pending?.kind === "discard") {
-      return session.dispatch({ type: "discard", index });
-    }
-    if (pending?.kind === "counter") {
-      if (blockedReason(cardId, index)) return;
-      return session.dispatch({ type: "counter-play", index });
-    }
-    if (blockedReason(cardId, index)) return;
-
-    selected = null;
-    // Every card is played the same way now; whatever it needs to aim at, the
-    // engine asks for next.
-    session.dispatch(isPieceCard(cardId) ? { type: "summon", index } : { type: "play-skill", index });
-  }
-
-  function renderOppStrip(): void {
+  function renderOppHand(): void {
     const s = state();
-    // Classic has no hand and no lasting cards, so the strip is dead weight.
-    oppStrip.classList.toggle("hidden", !cards());
-    if (!cards()) { oppStrip.replaceChildren(); return; }
+    if (!cards()) {
+      if (theirsRail.sig === "-") return;
+      theirsRail.sig = "-";
+      oppHand.replaceChildren();
+      return;
+    }
     const hand = s.players[opp].hand;
     const revealed = new Set(s.players[me].revealed);
-    const lasting = s.players[opp].lasting;
     const pending = myStep();
     // A card that is asking about the opponent's hand turns these into buttons.
-    const pickable =
-      pending?.kind === "targeting" && !!currentSpec(pending)?.kinds.includes("opp-hand");
+    const pickable = pending?.kind === "targeting" && !!currentSpec(pending)?.kinds.includes("opp-hand");
 
-    oppStrip.replaceChildren(
-      el("span", { class: "opp-strip-label", text: t("game.oppSkills") }),
-      ...hand.map((id, i) => {
-        const shown = revealed.has(i) && id !== "hidden";
-        const chip = el("div", {
-          class: `opp-card${shown ? " revealed" : ""}${pickable ? " peekable" : ""}`,
-          text: shown ? cardName(id) : "❓",
+    const faces = hand.map((id, i) => (revealed.has(i) && id !== "hidden" ? id : ""));
+    const sig = `${faces.join(",")}|${hand.length}|${pickable}`;
+    if (sig === theirsRail.sig) return;
+    if (railBusy(theirsRail, renderOppHand)) return;
+    theirsRail.sig = sig;
+
+    const firstFresh = hand.length > theirsRail.dealt ? theirsRail.dealt : hand.length;
+    theirsRail.dealt = hand.length;
+
+    if (hand.length === 0) {
+      oppHand.replaceChildren(el("div", { class: "hand-empty", text: t("play.handEmpty") }));
+      return;
+    }
+
+    const slots = hand.map((id, i) => {
+      const face = faces[i];
+      // A card a skill has looked at stays looked at — it is drawn face up, and
+      // the flip is what tells you it just happened.
+      const node = face ? cardEl(face, "sm") : cardBackEl("sm");
+      node.classList.add("hand-card", "opp-hand-card");
+      if (face) node.classList.add("revealed");
+      if (pickable) node.classList.add("peekable");
+      // A card you have seen stays inspectable; a face-down one has nothing to
+      // open, so it takes the pick straight away.
+      if (face) {
+        node.onclick = () => openCardZoom({
+          card: face,
+          actions: pickable ? [{ label: t("zoom.choose"), primary: true, run: () => pick({ type: "target", index: i }) }] : [],
         });
-        if (pickable) chip.onclick = () => pick({ type: "target", index: i });
-        return chip;
-      }),
-      // 지속 cards the opponent has in play are public — they are changing the
-      // rules everyone is playing by.
-      ...lasting.map((l) =>
-        el("div", { class: "opp-card lasting", text: `${skillIcon(l.card)} ${cardName(l.card)}` }),
-      ),
-    );
+      } else if (pickable) {
+        node.onclick = () => pick({ type: "target", index: i });
+      }
+      if (i >= firstFresh) node.classList.add("pre-deal");
+
+      const slot = el("div", { class: "hand-slot" }, [node]);
+      slot.style.setProperty("--i", String(i));
+      slot.style.setProperty("--n", String(hand.length));
+      return slot;
+    });
+
+    oppHand.replaceChildren(...slots);
+    fitNames(oppHand);
+    dealIn(slots.slice(firstFresh).map((s2) => s2.firstElementChild as HTMLElement), oppZones, theirsRail);
   }
+
+  /**
+   * Fly freshly drawn cards out of that player's deck counter and into the
+   * rail. The offset is measured rather than guessed: a fixed "come in from
+   * below" looks like a card appearing, not like a card being drawn.
+   */
+  /** Must match the card-deal keyframe's duration and per-card delay in CSS. */
+  const DEAL_MS = 520;
+  const DEAL_STAGGER_MS = 130;
+
+  function dealIn(fresh: HTMLElement[], zones: HTMLElement, rail: Rail): void {
+    if (fresh.length === 0) return;
+    rail.busyUntil = Date.now() + DEAL_MS + DEAL_STAGGER_MS * fresh.length;
+    requestAnimationFrame(() => {
+      const deck = zones.querySelector(".zone-deck") ?? zones;
+      const from = deck.getBoundingClientRect();
+      const fx = from.left + from.width / 2;
+      const fy = from.top + from.height / 2;
+      fresh.forEach((node, k) => {
+        const r = node.getBoundingClientRect();
+        node.style.setProperty("--fx", `${Math.round(fx - (r.left + r.width / 2))}px`);
+        node.style.setProperty("--fy", `${Math.round(fy - (r.top + r.height / 2))}px`);
+        node.style.setProperty("--d", String(k));
+        node.classList.remove("pre-deal");
+        node.classList.add("dealing");
+      });
+    });
+  }
+
+  /**
+   * Clicking a card in hand opens it, big, with what it does — and the button
+   * that commits it. A card in the rail is a hundred pixels wide, which is not
+   * enough to read rules text off, so playing one used to mean either knowing
+   * the card by heart or finding out after it had resolved.
+   */
+  function onHandClick(cardId: string, index: number): void {
+    const pending = myStep();
+    const blocked = blockedReason(cardId, index);
+    const actions: ZoomAction[] = [];
+
+    if (!blocked) {
+      if (pending?.kind === "targeting") {
+        actions.push({ label: t("zoom.choose"), primary: true, run: () => pick({ type: "target", index }) });
+      } else if (pending?.kind === "discard") {
+        actions.push({ label: t("zoom.discard"), primary: true, run: () => session.dispatch({ type: "discard", index }) });
+      } else if (pending?.kind === "counter") {
+        actions.push({ label: t("zoom.counter"), primary: true, run: () => session.dispatch({ type: "counter-play", index }) });
+      } else {
+        const summon = isPieceCard(cardId);
+        actions.push({
+          label: summon ? t("zoom.summon") : t("zoom.play"),
+          primary: true,
+          run: () => {
+            selected = null;
+            // Every card is played the same way; whatever it needs to aim at,
+            // the engine asks for next.
+            session.dispatch(summon ? { type: "summon", index } : { type: "play-skill", index });
+          },
+        });
+      }
+    }
+
+    openCardZoom({ card: cardId, note: blocked, actions });
+  }
+
+  /** Motion still owed by the move that ended the match, so the card can wait. */
+  let pendingAnimMs = 0;
 
   function scheduleGameOver(): void {
     if (gameOverUp || overlayTimer) return;
-    overlayTimer = window.setTimeout(() => { overlayTimer = undefined; showGameOver(); }, GAME_OVER_DELAY_MS);
+    const wait = GAME_OVER_DELAY_MS + pendingAnimMs;
+    pendingAnimMs = 0;
+    overlayTimer = window.setTimeout(() => { overlayTimer = undefined; showGameOver(); }, wait);
+  }
+
+  /**
+   * A ladder match reports its result exactly once. `rankChange` is kept so
+   * repainting the card — asking for a rematch, then waiting — does not count
+   * the match again.
+   */
+  let rankChange: RankChange | null = null;
+  function recordRankOnce(): void {
+    if (!view.ranked || rankChange) return;
+    const s = state();
+    if (s.status !== "ended") return;
+    rankChange = recordRanked(s.winner === "draw" ? "draw" : s.winner === me ? "win" : "loss");
+  }
+
+  /** The rating this match moved, under the result. */
+  function rankResult(): HTMLElement | null {
+    if (!rankChange) return null;
+    const { after, delta, promoted, demoted, placedNow } = rankChange;
+    const note =
+      placedNow ? t("rank.placed")
+      : promoted ? t("rank.promoted")
+      : demoted ? t("rank.demoted")
+      : "";
+    return el("div", { class: `overlay-rank${promoted ? " up" : demoted ? " down" : ""}` }, [
+      rankBadge(after, "sm"),
+      delta !== 0
+        ? el("span", { class: `rank-delta ${delta > 0 ? "up" : "down"}`, text: `${delta > 0 ? "+" : ""}${delta} RP` })
+        : null,
+      note ? el("span", { class: "rank-note", text: note }) : null,
+    ]);
   }
 
   function showGameOver(): void {
     const s = state();
+    recordRankOnce();
     const msg =
       s.winner === "draw" ? t("game.draw")
       : s.winner === me ? t("game.victory")
       : t("game.defeat");
     // Why it ended — checkmate, stalemate, resignation… — so a loss is legible.
     const why = s.endReason ? tPassthrough(s.endReason) : "";
-    statusEl.textContent = opponentLeft
-      ? `${msg} · ${t("game.oppLeft")}`
-      : why ? `${msg} · ${why}` : msg;
 
     const actions: HTMLElement[] = [];
     if (opponentLeft) {
@@ -724,8 +1160,9 @@ export function mountGame(
 
     overlay.replaceChildren(
       el("div", { class: "overlay-card" }, [
-        el("div", { class: "overlay-msg", text: msg }),
+        el("div", { class: `overlay-msg ${s.winner === me ? "win" : s.winner === "draw" ? "even" : "loss"}`, text: msg }),
         why ? el("div", { class: "overlay-why", text: why }) : null,
+        rankResult(),
         el("div", { class: "overlay-actions" }, actions),
       ]),
     );
@@ -769,7 +1206,6 @@ export function mountGame(
 
   /** Opponent quit before the match ended — there's no result to show. */
   function showOpponentLeft(): void {
-    statusEl.textContent = t("game.oppLeft");
     overlay.replaceChildren(
       el("div", { class: "overlay-card" }, [
         el("div", { class: "overlay-msg", text: t("game.oppLeft") }),
@@ -833,7 +1269,7 @@ export function mountGame(
 
   function targetPrompt(p: Targeting): string {
     const spec = currentSpec(p);
-    const what = !spec ? ""
+    return !spec ? t("target.pick")
       : spec.kinds.includes("choice") ? t("target.choice")
       : spec.kinds.includes("empty") && spec.kinds.length === 1 ? t("target.empty")
       : spec.kinds.includes("own-piece") && !spec.kinds.includes("enemy-piece") ? t("target.own")
@@ -843,7 +1279,6 @@ export function mountGame(
       : spec.kinds.includes("discard") ? t("target.discard")
       : spec.kinds.includes("lasting") ? t("target.lasting")
       : t("target.pick");
-    return `${cardName(p.card)} — ${what}`;
   }
 
   const pick = (a: Action): void => session.dispatch(a);
@@ -857,12 +1292,20 @@ export function mountGame(
     if (s.pending) return; // waiting on the opponent
     if (!myTurn()) return;
 
+    // Pieces move on the move step and nowhere else. The engine enforces this,
+    // but a board that silently ignores the click teaches nothing — so say why.
+    if (cards() && s.phase !== "move") {
+      if (s.chess.board[sq]?.color === me) showToast(t("play.notMoveStep"));
+      return;
+    }
+
     handleNormalClick(sq);
   }
 
   /** Our own piece that is free to be picked up this turn. */
   function movable(sq: Square): boolean {
     const s = state();
+    if (cards() && s.phase !== "move") return false;
     const p = s.chess.board[sq];
     if (!p || p.color !== me) return false;
     return !stuckSquares().includes(sq);
@@ -941,27 +1384,45 @@ export function mountGame(
 
   // ── the action feed ────────────────────────────────────────
   /** How many lines of history the feed keeps on screen. */
-  const LOG_LINES = 4;
-  let flashTimer: number | undefined;
+  const LOG_LINES = 9;
 
   /**
    * Turn one engine event into a line of the feed — and, for a card actually
-   * being played, into the card itself sailing across the board. Cards resolve
-   * in a single reducer step, so without this the only evidence that something
-   * happened is the board quietly changing.
+   * being played, into the cut-in that holds that card on screen long enough to
+   * read what it does.
    */
   function logEvent(e: MatchEvent): void {
     const who = (color: Color) => (color === me ? t("game.you") : t("game.opponent"));
     let text: string | null = null;
     let cls = "";
 
-    if (e.type === "played") {
+    if (e.type === "toast") {
+      // The engine's own account of what a card did. It is the only record that
+      // an effect resolved at all, so it belongs in the feed and not just in a
+      // toast that is gone in a second and a half. The counter window is the
+      // exception: it is a prompt, and the prompt is already on screen.
+      if (e.text === "fx.counterWindow") return;
+      text = tPassthrough(e.text);
+      cls = "effect";
+    } else if (e.type === "expired") {
+      text = t("log.expired").replace("{card}", cardName(e.card));
+      cls = "expire";
+    } else if (e.type === "slain") {
+      text = t("log.slain").replace("{piece}", `${who(e.color)} ${pieceName(e.piece)}`);
+      cls = "slain";
+    } else if (e.type === "played") {
       const summon = isPieceCard(e.card);
       text = t(summon ? "log.summoned" : "log.played")
         .replace("{who}", who(e.color))
         .replace("{card}", cardName(e.card));
       cls = summon ? "summon" : "play";
-      if (!summon || e.color === me) flashCard(e.card, e.color);
+      // A card of your own that still needs aiming gets the briefest possible
+      // flash: you picked it off a zoomed-up face a second ago, and the panel
+      // asking you where to point it is behind the cut-in. The opponent's card
+      // is the one you have never seen, so it keeps the full reveal.
+      const mine = e.color === me;
+      const aiming = mine && needsTargets(e.card);
+      cutIn.show({ card: e.card, mine, summon, hold: aiming ? 900 : mine ? 2200 : undefined });
     } else if (e.type === "drew") {
       // The opponent's draw is public as an event, but not as a card.
       const known = e.color === me && e.card !== "hidden";
@@ -1011,23 +1472,6 @@ export function mountGame(
     bannerTimer = window.setTimeout(() => {
       turnBanner.classList.add("hidden");
       turnBanner.replaceChildren();
-    }, 1200);
-  }
-
-  /** The played card, big, over the board for a moment. */
-  function flashCard(cardId: string, color: Color): void {
-    playFlash.replaceChildren(
-      el("div", { class: `flash-card ${color === me ? "mine" : "theirs"}` }, [
-        cardEl(cardId, "md"),
-        el("span", { class: "flash-who", text: color === me ? t("game.you") : t("game.opponent") }),
-      ]),
-    );
-    fitNames(playFlash);
-    playFlash.classList.remove("hidden");
-    if (flashTimer) clearTimeout(flashTimer);
-    flashTimer = window.setTimeout(() => {
-      playFlash.classList.add("hidden");
-      playFlash.replaceChildren();
     }, 1400);
   }
 
@@ -1040,14 +1484,43 @@ export function mountGame(
     toastTimer = window.setTimeout(() => toast.classList.add("hidden"), 1600);
   }
 
+  // A rematch deals a fresh opening hand, so the rails have to forget what they
+  // were holding — otherwise the new hand slides in without ever being dealt.
+  let wasEnded = false;
   session.subscribe((_s, events) => {
+    const live = state().status === "playing";
+    if (live && wasEnded) {
+      mineRail.dealt = 0; mineRail.sig = "";
+      theirsRail.dealt = 0; theirsRail.sig = "";
+      actionLog.replaceChildren();
+      rankChange = null; // a rematch is its own ladder match
+      // A rematch is a different board; nothing from the old one may fly across.
+      renderer.stop();
+      shownBoard = state().chess.board.slice();
+      lastMove = null;
+    }
+    wasEnded = !live;
     for (const e of events) {
       if (e.type === "toast") showToast(e.text);
       logEvent(e);
     }
     // Reset local targeting if the turn/pending situation changed under us.
     if (!myTurn()) { selected = null; freeMoveSource = null; }
+
+    const anims = absorbBoard();
+    // Squares a card touched without anything travelling to or from them — an
+    // enchant landing, terrain being laid. They have no motion of their own, so
+    // the flash is the only thing that says the card did anything there.
+    for (const sq of newlyMarked()) {
+      if (!anims.some((a) => ("sq" in a && a.sq === sq) || ("to" in a && a.to === sq))) {
+        anims.push({ kind: "flash", sq });
+      }
+    }
+    renderer.play(anims);
     render();
+    // The result card waits for the board to finish, so a mating move is watched
+    // rather than covered halfway through.
+    if (!live) pendingAnimMs = animLength(anims);
   });
 
   session.onNotice((notice) => {
@@ -1076,12 +1549,39 @@ export function mountGame(
     if (session.ownsClock && state().status === "playing") session.dispatch({ type: "flag" });
   });
 
+  /**
+   * The board's on-screen size is whatever the rest of the column leaves, so
+   * it is not known until layout has run — and it changes when the window
+   * does. Match the backing store to it, or a big board is a soft board.
+   */
+  const sizeBoard = (): void => {
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width === 0) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const px = Math.max(360, Math.min(1600, Math.round(rect.width * dpr)));
+    // Only repaint when the buffer really changed: the observer fires on every
+    // layout pass, and repainting from inside one is how you get a loop.
+    if (renderer.resize(px)) render();
+  };
+  const boardResize = new ResizeObserver(sizeBoard);
+  boardResize.observe(canvas);
+
+  sizeBoard();
   render();
   // Sprites may still be decoding on a cold load; repaint once they land.
   void preloadPieces().then(render);
 
   return () => {
+    boardResize.disconnect();
+    renderer.stop();
     if (overlayTimer) clearTimeout(overlayTimer);
+    if (bannerTimer) clearTimeout(bannerTimer);
+    if (toastTimer) clearTimeout(toastTimer);
+    if (mineRail.retry) clearTimeout(mineRail.retry);
+    if (theirsRail.retry) clearTimeout(theirsRail.retry);
+    // The zoom lives on document.body, so leaving the screen has to take it.
+    closeCardZoom();
+    cutIn.dispose();
     clock.dispose();
     session.dispose();
   };

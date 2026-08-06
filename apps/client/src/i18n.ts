@@ -131,12 +131,15 @@ const STRINGS = {
   "countdown.ready": ["GET READY", "준비"],
   "countdown.go": ["GO!", "시작!"],
   "multi.title": ["Online", "온라인 대전"],
-  "multi.quick": ["Quick Match", "퀵스타트"],
+  "multi.quick": ["Quick Match", "퀵 매치"],
+  "multi.quickNormal": ["Quick Match — Normal", "퀵 매치 — 일반"],
+  "multi.quickRanked": ["Quick Match — Ranked", "퀵 매치 — 랭크"],
   "multi.create": ["Create Room", "방 만들기"],
   "multi.join": ["Join Room", "참여하기"],
   "lobby.connecting": ["Connecting…", "서버에 연결 중…"],
   "lobby.waiting": ["Waiting for an opponent…", "상대를 기다리는 중…"],
   "lobby.hint": ["Matching you with another player in the same game", "같은 게임의 다른 플레이어와 매칭됩니다"],
+  "lobby.timeControl": ["Time control", "시간 설정"],
   "room.name": ["Room name", "방 제목"],
   "room.passwordOptional": ["Password (optional — empty = public)", "비밀번호 (선택 — 비우면 공개방)"],
   "room.passwordIfAny": ["Password (if any)", "비밀번호 (있는 경우)"],
@@ -164,8 +167,8 @@ const STRINGS = {
   ],
   "net.closed": ["Connection closed", "연결이 종료되었습니다"],
   "game.yourTurn": ["Your turn", "당신 차례"],
-  "game.turnMine": ["Your turn", "내 차례"],
-  "game.turnTheirs": ["Opponent's turn", "상대 차례"],
+  "game.turnMine": ["Your turn", "나의 턴"],
+  "game.turnTheirs": ["Opponent's turn", "상대 턴"],
   "game.leaveTitle": ["Leave the match?", "나가시겠습니까?"],
   "game.leaveWarn": ["It will be recorded as a loss.", "패배로 기록됩니다."],
   "game.leaveYes": ["Leave", "나가기"],
@@ -194,16 +197,31 @@ const STRINGS = {
   "play.discard": ["Discard", "버린 카드"],
   "play.inPlay": ["In play", "지속 효과"],
   "play.phaseDraw": ["Draw", "드로우"],
-  "play.phaseSummon": ["Summon", "소환"],
-  "play.phaseSkill": ["Skills", "스킬"],
-  "play.phaseMove": ["Move", "이동"],
-  "play.next": ["Next step", "다음 단계"],
+  "play.phaseSummon": ["Summon", "기물 소환"],
+  "play.phaseSkill": ["Skill card", "스킬 카드"],
+  "play.phaseMove": ["Move & attack", "이동 및 공격"],
+  "play.next": ["Next", "다음"],
+  // What to actually do on the step you are on. The steps were labelled from
+  // the start but never said what the click was, so knowing you were on "Skill
+  // card" did not tell you that the card comes out of your own hand.
+  "play.doDraw": ["Click your deck", "덱을 클릭하세요"],
+  "play.doSummon": ["Play a piece card, or skip", "기물 카드를 내거나 넘기세요"],
+  "play.doSkill": ["Play a card from hand, or skip", "손패에서 카드를 사용하거나 넘기세요"],
+  "play.doMove": ["Move a piece", "기물을 움직이세요"],
+  "play.waitTheirs": ["Waiting for the opponent", "상대를 기다리는 중"],
+  "play.handEmpty": ["No cards in hand", "손패가 비었습니다"],
+  "play.freeMovesTitle": ["Free moves", "추가 이동"],
+  "play.arrangeTitle": ["Put them back", "덱에 되돌리기"],
   "play.speedNormal": ["Normal", "일반"],
   "play.speedQuick": ["Quick", "속공"],
   "play.speedCounter": ["Counter", "대응"],
   "play.moveSpent": [
     "You played a normal card — no piece move this turn.",
     "일반 카드를 사용해 이번 턴에는 기물을 움직일 수 없어요.",
+  ],
+  "play.notMoveStep": [
+    "Pieces move on the Move & attack step — use Next to get there.",
+    "기물은 '이동 및 공격' 단계에서만 움직일 수 있어요. '다음'을 눌러 진행하세요.",
   ],
   "play.tooExpensive": ["Not enough cost", "코스트 부족"],
   "play.counterOnly": ["Played on the opponent's turn", "상대 턴에 발동"],
@@ -216,6 +234,7 @@ const STRINGS = {
   "draw.skip": ["Skip the draw", "드로우 건너뛰기"],
   "draw.take": ["Draw, then discard", "뽑고 버리기"],
   "draw.pick": ["Pick a card to discard", "버릴 카드를 고르세요"],
+  "draw.pickBody": ["Click a card in your hand to pitch it.", "손패에서 버릴 카드를 누르세요."],
   "summon.pick": ["Pick a square in your summoning zone", "소환 구역의 칸을 고르세요"],
   "summon.zone": ["Your back three ranks", "자신의 뒤쪽 3줄"],
   "summon.cannotMove": [
@@ -262,6 +281,8 @@ const STRINGS = {
   "log.drewHidden": ["{who} drew a card", "{who} — 카드 1장 뽑음"],
   "log.destroyed": ["{card} was destroyed", "{card} 파괴됨"],
   "log.dice": ["{who} rolled {n}", "{who} — 주사위 {n}"],
+  "log.expired": ["{card} ran out", "{card} 효과 종료"],
+  "log.slain": ["{piece} was destroyed", "{piece} 파괴됨"],
   "preview.before": ["Before", "사용 전"],
   "preview.after": ["After", "사용 후"],
   "preview.none": ["This card has no board effect to show.", "이 카드는 판 위에 보여줄 변화가 없습니다."],
@@ -293,12 +314,29 @@ const STRINGS = {
   "profile.winRate": ["Win rate", "승률"],
   "profile.unranked": ["Unranked", "언랭크"],
   "profile.recent": ["Recent matches", "최근 대전"],
+  "profile.pieceSkin": ["Piece skin", "기물 스킨"],
+  "profile.boardTheme": ["Board theme", "보드 테마"],
+  "profile.worn": ["Equipped", "착용 중"],
+  "profile.wear": ["Equip", "착용"],
+  "profile.locked": ["In the shop", "상점에서 구매"],
   "profile.noRecords": ["No records", "기록 없음"],
   "profile.soon": ["Stats and ranking are coming soon.", "전적·랭킹 시스템은 준비 중입니다."],
   "shop.title": ["Shop", "상점"],
   "shop.pieces": ["Piece Cards", "기물 카드"],
   "shop.packs": ["Skill Card Packs", "스킬 카드팩"],
-  "shop.other": ["Coming Soon", "출시 예정"],
+  "shop.pieceSkins": ["Piece Skins", "기물 스킨"],
+  "shop.boardThemes": ["Board Themes", "보드 테마"],
+  "shop.skinsNote": [
+    "Cosmetic only — a skin changes nothing about how a piece moves.",
+    "외형만 바뀝니다 — 스킨은 기물의 움직임에 영향을 주지 않아요.",
+  ],
+  "shop.themesNote": [
+    "The material the board itself is made of.",
+    "체스판을 이루는 재질을 바꿉니다.",
+  ],
+  "shop.owned": ["Owned", "보유 중"],
+  "shop.equipAt": ["Change in My Info", "내 정보에서 변경"],
+  "shop.skinBought": ["{name} bought — put it on in My Info.", "{name} 구매 완료 — 내 정보에서 착용하세요."],
   "shop.piecesNote": ["Collect up to {max} copies of each piece.", "기물마다 최대 {max}개까지 모을 수 있어요."],
   "shop.packsNote": ["Each pack opens into {n} random skill cards.", "카드팩 하나를 열면 스킬 카드 {n}장이 랜덤으로 나와요."],
   "shop.pieceCard": ["Collectible piece card", "수집형 기물 카드"],
@@ -352,6 +390,42 @@ const STRINGS = {
   "counter.trigCheckmate": ["your king is being mated", "킹이 체크메이트 당하는 중입니다"],
   "counter.trigTerrain": ["your piece walked into terrain", "기물이 지형 효과에 걸렸습니다"],
   "counter.trigEnchant": ["they aimed an enchant at you", "상대가 부여를 걸려 합니다"],
+  "rank.placements": ["Placements", "배치고사"],
+  "rank.placementCount": ["{n} of {total} played", "{total}판 중 {n}판"],
+  "rank.placementHint": [
+    "Win your {total} placement matches to be given a starting rank.",
+    "랭크 배치는 {total}판입니다. 다 치르면 시작 티어가 정해져요.",
+  ],
+  "rank.placed": ["Placement complete", "배치 완료"],
+  "rank.promoted": ["Promoted!", "승급!"],
+  "rank.demoted": ["Demoted", "강등"],
+  "profile.draws": ["Draws", "무"],
+  "zone.deck": ["Deck", "덱"],
+  "zone.grave": ["Graveyard", "묘지"],
+  "zone.field": ["In play", "지속 카드"],
+  "zone.none": ["Nothing in play", "발동 중인 카드 없음"],
+  "zone.empty": ["This pile is empty.", "비어 있습니다."],
+  "zone.drawHint": ["Click your deck to draw", "덱을 클릭해 드로우"],
+  "counter.none": ["No card in hand answers this.", "지금 대응할 수 있는 카드가 없습니다."],
+  "zoom.play": ["Play this card", "이 카드 사용"],
+  "zoom.summon": ["Summon this piece", "이 기물 소환"],
+  "zoom.discard": ["Discard this card", "이 카드 버리기"],
+  "zoom.counter": ["Respond with this", "이 카드로 대응"],
+  "zoom.choose": ["Choose this card", "이 카드 선택"],
+  "zoom.close": ["Close", "닫기"],
+  "cutin.you": ["You", "나"],
+  "cutin.them": ["Opponent", "상대"],
+  "cutin.activated": ["activated", "카드 발동"],
+  "cutin.summoned": ["summoned", "기물 소환"],
+  "cutin.skip": ["Click to skip", "클릭하면 넘어갑니다"],
+  "nick.title": ["What should we call you?", "닉네임을 정해주세요"],
+  "nick.body": [
+    "This is the name your opponents see. You can change it later in Profile.",
+    "상대에게 보이는 이름이에요. 나중에 내 정보에서 바꿀 수 있습니다.",
+  ],
+  "nick.placeholder": ["Your nickname", "닉네임 입력"],
+  "nick.confirm": ["Start playing", "시작하기"],
+  "nick.tooShort": ["Pick 2–16 characters.", "2~16자로 입력해주세요."],
 } as const satisfies Record<string, Entry>;
 
 /** Text produced outside the client (server replies, engine events, results). */
@@ -372,6 +446,30 @@ const PASSTHROUGH = {
   "draw-repetition": ["Threefold repetition", "3회 동형반복"],
   "titan-crush": ["Crushed by the Titan", "거신병에게 짓밟힘"],
   "titan-explode": ["The Titan exploded", "거신병 폭발"],
+
+  // ── what the engine says as a card resolves ─────────────────
+  // The engine has no language, so it reports these as keys. They used to be
+  // English sentences written straight into the reducer, which meant every
+  // effect that actually fired announced itself in the wrong language and then
+  // vanished after a second and a half.
+  "fx.counterWindow": ["Counter window", "대응 기회"],
+  "fx.plague": ["The plague takes a pawn", "역병이 폰을 앗아갔다"],
+  "fx.denPiece": ["The dice take a piece", "주사위가 기물을 앗아갔다"],
+  "fx.denBottom": ["A card goes to the bottom of the deck", "카드 1장이 덱 맨 아래로"],
+  "fx.doubleAgain": ["Double — move that piece again", "더블 — 같은 기물을 한 번 더"],
+  "fx.swamp": ["Bogged down in the swamp", "늪지에 빠져 다음 턴 이동 불가"],
+  "fx.mineKingBack": ["The king steps back from the mine", "킹이 지뢰를 피해 물러났다"],
+  "fx.mine": ["Mine!", "지뢰 폭발!"],
+  "fx.drawDeclined": ["Draw declined", "드로우를 넘겼다"],
+  "fx.discarded": ["Card discarded", "카드를 버렸다"],
+  "fx.summoned": ["Summoned!", "소환!"],
+  "fx.insight": ["Insight — the card is undone", "간파 — 카드가 무효화됐다"],
+  "fx.shield": ["The shield holds", "방패가 공격을 막았다"],
+  "fx.evade": ["Evaded!", "회피 성공!"],
+  "fx.ward": ["Warded", "지형 효과를 막았다"],
+  "fx.sever": ["The enchant is cut short", "부여가 끊겼다"],
+  "fx.bodyguard": ["The bodyguard falls in the king's place", "보디가드가 킹 대신 쓰러졌다"],
+  "fx.lastStand": ["Last stand — the king vanishes", "최후의 저항 — 킹이 사라졌다"],
 } as const satisfies Record<string, Entry>;
 
 export const MODE_NAME: Record<string, Entry> = {
@@ -410,6 +508,21 @@ const PIECE_CARD_NAME: Record<string, Entry> = {
   "piece:r": ["Rook", "룩"],
   "piece:q": ["Queen", "퀸"],
 };
+
+/**
+ * A piece by its letter, for the feed. The card table above is keyed by card id
+ * and has no king in it — a king is never summoned, but it can still be the
+ * thing a line of the feed is about.
+ */
+const PIECE_NAME: Record<string, Entry> = {
+  p: ["Pawn", "폰"],
+  n: ["Knight", "나이트"],
+  b: ["Bishop", "비숍"],
+  r: ["Rook", "룩"],
+  q: ["Queen", "퀸"],
+  k: ["King", "킹"],
+};
+export const pieceName = (type: string) => pick(PIECE_NAME, type);
 const PIECE_CARD_DESC: Record<string, Entry> = {
   "piece:p": ["Summon a pawn into your back three ranks.", "뒤쪽 3줄에 폰을 소환한다."],
   "piece:n": ["Summon a knight into your back three ranks.", "뒤쪽 3줄에 나이트를 소환한다."],
@@ -433,19 +546,27 @@ export const gameTagline = (id: string) => pick(GAME_TAGLINE, id);
 
 export const SHOP_ITEM: Record<string, Entry> = {
   "pack-starter": ["Starter Pack", "스타터 카드팩"],
-  "queen-gold": ["Gold Piece Skin", "골드 기물 스킨"],
   "pack-premium": ["Premium Pack", "프리미엄 카드팩"],
-  "theme-board": ["Neon Board Theme", "네온 보드 테마"],
-  boost: ["Boost Pass", "부스트 패스"],
-  trophy: ["Season Pass", "시즌 패스"],
+  // Piece skins.
+  classic: ["Classic Set", "클래식 세트"],
+  demon: ["Infernal Host", "악마 군단"],
+  angel: ["Celestial Host", "천사 군단"],
+  ossuary: ["Ossuary Set", "유해 세트"],
+  // Board themes.
+  arcane: ["Arcane Observatory", "비전 천문대"],
+  marble: ["Marble & Onyx", "대리석과 흑요석"],
+  sandstone: ["Sandstone Temple", "사암 신전"],
 };
 export const SHOP_DESC: Record<string, Entry> = {
   "pack-starter": ["5 random skill cards", "스킬 카드 5장 랜덤"],
-  "queen-gold": ["Premium chess piece set", "체스 기물 프리미엄 스킨"],
   "pack-premium": ["Higher rare card odds", "희귀 카드 확률 UP"],
-  "theme-board": ["Board background theme", "보드 배경 테마"],
-  boost: ["Double XP for 7 days", "경험치 2배 (7일)"],
-  trophy: ["Unlocks the season reward track", "시즌 보상 트랙 해금"],
+  classic: ["The set the game ships with", "기본으로 제공되는 세트"],
+  demon: ["Horned, ash and obsidian, molten cracks", "뿔 달린 재와 흑요석, 갈라진 틈의 용암"],
+  angel: ["Folded wings, white marble and fallen bronze", "접힌 날개, 백대리석과 타락한 청동"],
+  ossuary: ["Carved bone and antler, one side charred", "뼈와 뿔 조각, 한쪽은 그을린"],
+  arcane: ["Dark stone inlaid with glowing runes", "빛나는 룬이 새겨진 검은 석재"],
+  marble: ["Cream marble and veined black onyx", "크림 대리석과 결이 흐르는 흑요석"],
+  sandstone: ["Sun-bleached sandstone and volcanic basalt", "빛에 바랜 사암과 화산 현무암"],
 };
 export const shopItem = (id: string) => pick(SHOP_ITEM, id);
 export const shopDesc = (id: string) => pick(SHOP_DESC, id);

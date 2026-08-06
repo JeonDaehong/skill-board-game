@@ -35,7 +35,12 @@ export interface TimeControl {
  */
 export type ClientMsg =
   // Matchmaking intents
-  | { type: "quickstart"; gameId: string; mode: GameMode; deck: string[]; timeControl?: TimeControl }
+  /**
+   * `ranked` picks the queue, not just a label: a ladder match and a casual one
+   * are not interchangeable opponents, so the two never match against each
+   * other. Both queues run a fixed clock, which is why the client sends one.
+   */
+  | { type: "quickstart"; gameId: string; mode: GameMode; deck: string[]; ranked?: boolean; timeControl?: TimeControl }
   | { type: "create-room"; title: string; password?: string; gameId: string; mode: GameMode; deck: string[]; timeControl?: TimeControl }
   | { type: "list-rooms" }
   /**

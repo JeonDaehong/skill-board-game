@@ -87,6 +87,17 @@ export function cardEl(cardId: string, size: CardSize): HTMLElement {
 }
 
 /**
+ * The back of a card. A hand you can count but cannot read is the whole point
+ * of hidden information, so the opponent's hand is a row of these — same box as
+ * a real card, so it sits in a rail without shoving anything around.
+ */
+export function cardBackEl(size: CardSize): HTMLElement {
+  return el("div", { class: `tcg-card tcg-back ${size}` }, [
+    el("div", { class: "back-face" }, [el("span", { class: "back-sigil", text: "◆" })]),
+  ]);
+}
+
+/**
  * Shrink a card title until it fits its banner. A few names ("King's Return")
  * overrun the painted banner at the pool size, and clipping them to an ellipsis
  * loses the card's identity — which is the one thing that has to read.

@@ -88,7 +88,9 @@ const waitingRooms = new Map<string, WaitingRoom>();
  */
 const quickQueues = new Map<string, Player>();
 
-const queueKey = (gameId: string, mode: GameMode): string => `${gameId}:${mode}`;
+/** Ranked and casual are separate queues, so they can never match each other. */
+const queueKey = (gameId: string, mode: GameMode, ranked: boolean): string =>
+  `${gameId}:${mode}:${ranked ? "ranked" : "normal"}`;
 
 const PORT = Number(process.env.PORT ?? 8787);
 const wss = new WebSocketServer({ port: PORT });
@@ -112,7 +114,7 @@ function send(ws: WebSocket, msg: ServerMsg): void {
 
 function handle(player: Player, msg: ClientMsg): void {
   switch (msg.type) {
-    case "quickstart": return quickstart(player, msg.gameId, msg.mode, msg.deck, msg.timeControl);
+    case "quickstart": return quickstart(player, msg.gameId, msg.mode, msg.deck, !!msg.ranked, msg.timeControl);
     case "create-room": return createRoom(player, msg);
     case "list-rooms": return listRooms(player);
     case "join-room": return joinRoom(player, msg);
@@ -173,6 +175,7 @@ function quickstart(
   gameId: string,
   mode: GameMode,
   deck: string[],
+  ranked: boolean,
   tc?: TimeControl,
 ): void {
   if (!checkGame(player, gameId)) return;
@@ -183,14 +186,16 @@ function quickstart(
   player.mode = mode;
   player.timeControl = sanitizeControl(tc);
 
-  const key = queueKey(gameId, mode);
+  const key = queueKey(gameId, mode, ranked);
   const waiting = quickQueues.get(key);
   if (waiting && isOpen(waiting) && waiting !== player) {
     quickQueues.delete(key);
     // The player who has been sitting in the queue set the terms; whoever
-    // walks in second takes the room as it is.
+    // walks in second takes the room as it is. Both sides of a quick match
+    // send the queue's own fixed clock, so in practice these agree.
     const control = waiting.timeControl ?? DEFAULT_TIME_CONTROL;
-    return startRoom(uniqueCode(), waiting, player, gameId, mode, "Quick Match", control);
+    const title = ranked ? "Ranked Match" : "Quick Match";
+    return startRoom(uniqueCode(), waiting, player, gameId, mode, title, control);
   }
   quickQueues.set(key, player);
   send(player.ws, { type: "waiting" });

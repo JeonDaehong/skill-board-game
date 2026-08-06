@@ -5,22 +5,11 @@ import { art, icon, objectUrl, pieceUrl } from "../ui/art.js";
 import { cardEl, fitNames } from "../ui/card.js";
 import {
   MAX_PER_PIECE, PACKS, PIECE_CARDS, buyPack, buyPieceCard, formatCoins, getCoins,
-  getPacks, openPack, ownedCount, type CardPack, type PieceCard,
+  getPacks, openPack, ownedCount, setCoins, type CardPack, type PieceCard,
 } from "../economy.js";
+import { BOARD_THEMES, PIECE_SKINS, grantSkin, ownsSkin, skinPrice } from "../skins.js";
+import { profileScreen } from "./profile.js";
 import { cardName, shopDesc, shopItem, t } from "../i18n.js";
-
-interface MockItem {
-  art: string;
-  price: string;
-}
-
-/** Storefront rows that are still a mock: skins, passes, themes. */
-const MOCK_ITEMS: MockItem[] = [
-  { art: "queen-gold", price: "2,500" },
-  { art: "theme-board", price: "1,800" },
-  { art: "boost", price: "1,200" },
-  { art: "trophy", price: "4,900" },
-];
 
 /**
  * Shop. Piece cards and skill-card packs both transact for real: coins come out
@@ -32,6 +21,8 @@ export const shopScreen: Screen = (ctx: AppContext) => {
   const walletAmount = el("span", { class: "wallet-amount" });
   const pieceGrid = el("div", { class: "shop-grid piece-grid" });
   const packGrid = el("div", { class: "shop-grid pack-grid" });
+  const skinGrid = el("div", { class: "shop-grid skin-grid" });
+  const themeGrid = el("div", { class: "shop-grid skin-grid" });
   const notice = el("div", { class: "shop-notice hidden" });
   const overlay = el("div", { class: "pack-overlay hidden" });
 
@@ -53,22 +44,13 @@ export const shopScreen: Screen = (ctx: AppContext) => {
         el("div", { class: "shop-section-note", text: t("shop.piecesNote").replace("{max}", String(MAX_PER_PIECE)) }),
         pieceGrid,
 
-        el("h2", { class: "shop-section", text: t("shop.other") }),
-        el("div", { class: "shop-grid" },
-          MOCK_ITEMS.map((it) =>
-            el("div", { class: "glass shop-item" }, [
-              el("span", { class: "item-tag", text: t("common.soon") }),
-              art(objectUrl(it.art), "item-icon"),
-              el("div", { class: "item-name", text: shopItem(it.art) }),
-              el("div", { class: "item-desc", text: shopDesc(it.art) }),
-              el("button", { class: "btn btn-small btn-block price-btn btn-locked" }, [
-                icon("coin", "coin"),
-                el("span", { text: it.price }),
-              ]),
-            ]),
-          ),
-        ),
-        el("div", { class: "coming-note", text: t("shop.soon") }),
+        el("h2", { class: "shop-section", text: t("shop.pieceSkins") }),
+        el("div", { class: "shop-section-note", text: t("shop.skinsNote") }),
+        skinGrid,
+
+        el("h2", { class: "shop-section", text: t("shop.boardThemes") }),
+        el("div", { class: "shop-section-note", text: t("shop.themesNote") }),
+        themeGrid,
       ]),
       overlay,
       pillNav(ctx, "shop"),
@@ -99,6 +81,61 @@ export const shopScreen: Screen = (ctx: AppContext) => {
     });
     renderPacks();
     renderPieces();
+    renderSkins();
+  }
+
+  // ── skins and themes ───────────────────────────────────────
+  /**
+   * Cosmetics sell here and are worn on the profile screen. Buying something and
+   * putting it on are separate decisions, so the shop tile stops at "owned" and
+   * points at where the change is made rather than dressing you on the spot.
+   */
+  function renderSkins(): void {
+    const coins = getCoins();
+    const tile = (id: string, artName: string, price: number): HTMLElement => {
+      const owned = ownsSkin(id);
+      const affordable = coins >= price;
+      const item = el("div", { class: `glass shop-item skin-item${owned ? " owned" : ""}` }, [
+        owned ? el("span", { class: "owned-tag", text: t("shop.owned") }) : null,
+        art(objectUrl(artName), "item-icon"),
+        el("div", { class: "item-name", text: shopItem(id) }),
+        el("div", { class: "item-desc", text: shopDesc(id) }),
+      ]);
+      item.appendChild(
+        owned
+          ? el("button", {
+              class: "btn btn-small btn-block btn-open",
+              text: t("shop.equipAt"),
+              onclick: () => ctx.navigate(profileScreen),
+            })
+          : el("button", {
+              class: `btn btn-small btn-block price-btn${affordable ? " btn-primary" : " btn-locked"}`,
+              onclick: () => onBuySkin(id, item),
+            }, [icon("coin", "coin"), el("span", { text: formatCoins(price) })]),
+      );
+      return item;
+    };
+
+    // The default set is not merchandise; it is what you already have on.
+    skinGrid.replaceChildren(
+      ...PIECE_SKINS.filter((s) => s.price > 0).map((s) => tile(s.id, s.art, s.price)),
+    );
+    themeGrid.replaceChildren(
+      ...BOARD_THEMES.filter((s) => s.price > 0).map((s) => tile(s.id, s.art, s.price)),
+    );
+  }
+
+  function onBuySkin(id: string, node: HTMLElement): void {
+    const price = skinPrice(id);
+    if (price === null || ownsSkin(id)) return;
+    if (getCoins() < price) {
+      shake(node);
+      return flash(t("shop.tooPoor"), "bad");
+    }
+    setCoins(getCoins() - price);
+    grantSkin(id);
+    flash(t("shop.skinBought").replace("{name}", shopItem(id)), "ok");
+    renderAll();
   }
 
   // ── packs ──────────────────────────────────────────────────
