@@ -1,7 +1,8 @@
 import { el, type AppContext, type Screen } from "../router.js";
 import { gameById } from "../games.js";
 import { driveMatchmaking, type Matchmaking } from "../net.js";
-import { MAX_SPECTATORS, type RoomSummary } from "../types.js";
+import { MAX_SPECTATORS, type LobbyView as RoomLobby, type RoomSummary } from "../types.js";
+import { renderRoomLobby } from "./room-seats.js";
 import { allDecksForMatch } from "../decks.js";
 import { multiScreen } from "./multi.js";
 import { art, icon, objectUrl } from "../ui/art.js";
@@ -14,6 +15,8 @@ import { gameName, modeName, t, tPassthrough } from "../i18n.js";
  */
 export const joinRoomScreen: Screen = (ctx: AppContext) => {
   let mm: Matchmaking;
+  /** True once we are seated in a room, so the browser is off screen. */
+  let inLobby = false;
 
   const codeInput = el("input", { class: "field-input" }) as HTMLInputElement;
   codeInput.placeholder = t("room.inviteCodePlaceholder");
@@ -25,27 +28,26 @@ export const joinRoomScreen: Screen = (ctx: AppContext) => {
   const errorLine = el("div", { class: "form-error" });
   const listBox = el("div", { class: "room-list", text: "" });
 
-  ctx.root.appendChild(
-    el("div", { class: "screen join-screen" }, [
-      el("button", { class: "btn btn-ghost corner", text: t("common.back"), onclick: () => ctx.navigate(multiScreen) }),
-      el("h1", { class: "screen-title", text: t("multi.join") }),
-      el("div", { class: "glass form-card" }, [
-        el("label", { class: "field-label", text: t("room.joinByCode") }),
-        el("div", { class: "code-join-row" }, [codeInput, codePw]),
-        el("button", {
-          class: "btn btn-primary btn-block",
-          text: t("common.join"),
-          onclick: () => join(codeInput.value, codePw.value),
-        }),
-      ]),
-      el("div", { class: "list-head" }, [
-        el("span", { class: "field-label", text: t("room.openRooms") }),
-        el("button", { class: "btn btn-ghost btn-small", text: t("room.refresh"), onclick: () => refresh() }),
-      ]),
-      errorLine,
-      listBox,
+  const screen = el("div", { class: "screen join-screen" }, [
+    el("button", { class: "btn btn-ghost corner", text: t("common.back"), onclick: () => ctx.navigate(multiScreen) }),
+    el("h1", { class: "screen-title", text: t("multi.join") }),
+    el("div", { class: "glass form-card" }, [
+      el("label", { class: "field-label", text: t("room.joinByCode") }),
+      el("div", { class: "code-join-row" }, [codeInput, codePw]),
+      el("button", {
+        class: "btn btn-primary btn-block",
+        text: t("common.join"),
+        onclick: () => join(codeInput.value, codePw.value),
+      }),
     ]),
-  );
+    el("div", { class: "list-head" }, [
+      el("span", { class: "field-label", text: t("room.openRooms") }),
+      el("button", { class: "btn btn-ghost btn-small", text: t("room.refresh"), onclick: () => refresh() }),
+    ]),
+    errorLine,
+    listBox,
+  ]);
+  ctx.root.appendChild(screen);
 
   function setError(msg: string): void {
     errorLine.textContent = msg;
@@ -131,11 +133,34 @@ export const joinRoomScreen: Screen = (ctx: AppContext) => {
     pw.onkeydown = (e) => { if (e.key === "Enter") go(room.code, pw.value); };
   }
 
+  /**
+   * Once we are in a room the browser is gone and the seats take over the
+   * screen. Leaving puts the browser back, still on the same socket.
+   */
+  function showLobby(lobby: RoomLobby): void {
+    inLobby = true;
+    renderRoomLobby(screen, lobby, {
+      takeSeat: (seat) => mm.send({ type: "take-seat", seat }),
+      start: () => mm.send({ type: "start-match" }),
+      leave: () => {
+        inLobby = false;
+        mm.send({ type: "cancel" });
+        ctx.navigate(joinRoomScreen);
+      },
+    });
+  }
+
   mm = driveMatchmaking(
     ctx,
     {
       onRoomList: (rooms) => renderRooms(rooms),
-      onJoinFailed: (reason) => setError(tPassthrough(reason)),
+      onLobby: (lobby) => showLobby(lobby),
+      onJoinFailed: (reason) => {
+        // Turned away, or the host closed the room out from under us: back to
+        // the list with the reason on it rather than a dead lobby.
+        if (inLobby) { inLobby = false; ctx.navigate(joinRoomScreen); return; }
+        setError(tPassthrough(reason));
+      },
       onError: (msg) => setError(msg),
       onOpponentLeft: () => setError(t("game.oppLeft")),
     },

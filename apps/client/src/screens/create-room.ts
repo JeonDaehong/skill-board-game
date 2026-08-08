@@ -5,6 +5,8 @@ import { driveMatchmaking, type Matchmaking } from "../net.js";
 import { deckForMatch, deckReady, deckTotal, loadDeck } from "../decks.js";
 import { multiScreen } from "./multi.js";
 import { makeDeckScreen } from "./deck.js";
+import { renderRoomLobby } from "./room-seats.js";
+import type { LobbyView } from "../types.js";
 import { art, objectUrl } from "../ui/art.js";
 import {
   TIME_CONTROLS, getTimeControlId, setTimeControlId, timeControlById, timeControlLabel,
@@ -168,9 +170,12 @@ export const createRoomScreen: Screen = (ctx: AppContext) => {
     mm = driveMatchmaking(
       ctx,
       {
-        onRoomCreated: (code) => showWaiting(code),
-        onError: (msg) => showForm(),
-        onOpponentLeft: () => showWaiting("", t("game.oppLeft")),
+        // The room's own view arrives as `lobby` right after it is made, and
+        // again every time somebody sits down or leaves.
+        onLobby: (lobby) => showLobby(lobby),
+        onError: () => showForm(),
+        onJoinFailed: () => ctx.navigate(multiScreen),
+        onOpponentLeft: () => ctx.navigate(multiScreen),
       },
       {
         type: "create-room",
@@ -184,30 +189,13 @@ export const createRoomScreen: Screen = (ctx: AppContext) => {
     );
   }
 
-  function showWaiting(code: string, note = t("room.waitingJoin")): void {
-    const codeBox = el("div", { class: "invite-code", text: code || "—" });
-    const copyBtn = el("button", {
-      class: "btn btn-ghost btn-small",
-      text: t("room.copy"),
-      onclick: () => {
-        if (code) navigator.clipboard?.writeText(code).then(
-          () => (copyBtn.textContent = t("room.copied")),
-          () => {},
-        );
-      },
+  function showLobby(lobby: LobbyView): void {
+    renderRoomLobby(container, lobby, {
+      // The host never moves seats, so only start and leave are theirs.
+      takeSeat: (seat) => mm?.send({ type: "take-seat", seat }),
+      start: () => mm?.send({ type: "start-match" }),
+      leave: () => ctx.navigate(multiScreen),
     });
-
-    container.replaceChildren(
-      el("h1", { class: "screen-title", text: t("room.waitingTitle") }),
-      el("div", { class: "glass lobby-card" }, [
-        el("div", { class: "field-label center", text: t("room.inviteCode") }),
-        el("div", { class: "invite-row" }, [codeBox, copyBtn]),
-        el("div", { class: "spinner" }),
-        el("div", { class: "lobby-status", text: note }),
-        el("div", { class: "carousel-hint", text: t("room.shareHint") }),
-        el("button", { class: "btn btn-ghost", text: t("room.leave"), onclick: () => ctx.navigate(multiScreen) }),
-      ]),
-    );
   }
 
   return () => { if (mm) mm.cleanup(); };

@@ -1779,6 +1779,38 @@ button { font-family: inherit; }
 .duel-modal .step-cards { width: 100%; justify-content: center; }
 .duel-modal .tcg-card.step-card { width: 84px; }
 
+/* ── The room, before it starts ──────────────────────────────
+   Two player seats and three in the stands, all of them visible to everyone in
+   the room. The room used to begin the moment a second person arrived, so
+   there was nothing to show and a third arrival was simply bounced. */
+.room-lobby { width: min(94vw, 460px); gap: 12px; }
+.seat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; width: 100%; }
+.seat-grid.watch-grid { grid-template-columns: repeat(3, 1fr); }
+.seat-slot {
+  position: relative;
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 9px 10px; min-height: 56px;
+  border: 1px solid var(--frame); border-radius: var(--r-sm);
+  background: rgba(0, 0, 0, 0.25);
+}
+.seat-slot.open { border-style: dashed; opacity: 0.72; }
+.seat-slot.filled.player { border-color: var(--gold-dk); background: rgba(216, 180, 90, 0.09); }
+.seat-slot.you { box-shadow: inset 0 0 0 1px var(--gold); }
+.seat-slot.takeable { cursor: pointer; }
+.seat-slot.takeable:hover { border-color: var(--gold); opacity: 1; }
+.seat-role { font-size: 0.68rem; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+.seat-name {
+  font-size: 0.88rem; color: var(--fg); font-weight: 700;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.seat-slot.open .seat-name { color: var(--muted); font-weight: 400; font-style: italic; }
+.seat-you {
+  position: absolute; top: 6px; right: 7px;
+  font-size: 0.6rem; color: var(--gold-lt);
+  border: 1px solid var(--gold-dk); border-radius: 999px; padding: 0 5px;
+}
+.lobby-controls { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; width: 100%; }
+
 /* Who is watching. Quiet by default — it is information, not a control — and
    only the watcher's own copy is tinted, so they can tell at a glance that they
    are in the stands rather than at the table. */

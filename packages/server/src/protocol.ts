@@ -22,6 +22,38 @@ export interface RoomInfo {
   spectators: number;
 }
 
+/** Where one person is sitting in a room that has not started yet. */
+export type Seat = "host" | "guest" | "watcher";
+
+/**
+ * A room before the match begins: two player seats and three seats in the
+ * stands, with everyone visible to everyone.
+ *
+ * The room used to start the instant a second person arrived, which meant
+ * nobody agreed to begin and a third arrival found the room already gone from
+ * the waiting list — they were bounced with "Room not found". Seats fix both:
+ * people gather, and the host says when.
+ */
+export interface LobbyView {
+  code: string;
+  title: string;
+  gameId: string;
+  mode: GameMode;
+  locked: boolean;
+  timeControl: TimeControl;
+  /** Display names, or absent for an empty seat / a player signed out. */
+  host?: string;
+  guest?: string;
+  guestTaken: boolean;
+  watchers: (string | undefined)[];
+  /** How many the stands hold, so the client need not hardcode it. */
+  watcherCap: number;
+  /** Which seat this client is in. */
+  you: Seat;
+  /** True when the host may start: someone is in the other player seat. */
+  canStart: boolean;
+}
+
 /** Main clocks, in ms remaining. The server owns these; clients only display
  *  them. Online play uses increment controls, so there is no byoyomi field. */
 export interface Clocks {
@@ -72,6 +104,10 @@ export type ClientMsg =
    * an audience, and there is no lobby for them to have agreed in.
    */
   | { type: "spectate"; code: string; password?: string }
+  /** Move between the free player seat and the stands, before the match starts. */
+  | { type: "take-seat"; seat: Seat }
+  /** Host only: begin, with whoever is seated. */
+  | { type: "start-match" }
   | { type: "cancel" }
   // In-match (action shape is game-specific; the room's engine interprets it)
   | { type: "action"; action: unknown }
@@ -81,6 +117,8 @@ export type ClientMsg =
 export type ServerMsg =
   | { type: "waiting" }
   | { type: "room-created"; code: string }
+  /** The room's seats, resent to everyone in it whenever they change. */
+  | { type: "lobby"; lobby: LobbyView }
   | { type: "room-list"; rooms: RoomInfo[] }
   | { type: "join-failed"; reason: string }
   | {

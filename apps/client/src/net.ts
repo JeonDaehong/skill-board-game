@@ -8,7 +8,7 @@ import { createRemoteBoardSession } from "./board/session.js";
 import { mountBoardGame } from "./board/controller.js";
 import { getView } from "./board/views.js";
 import { menuScreen } from "./screens/menu.js";
-import type { RoomSummary } from "./types.js";
+import type { LobbyView, RoomSummary } from "./types.js";
 import { getTimeControlId, timeControlById, type TimeControl } from "./clock.js";
 import { t } from "./i18n.js";
 import { SERVER_URL } from "./config.js";
@@ -50,6 +50,8 @@ function fromWire(w: WireTimeControl): TimeControl {
 export interface MatchmakingHandlers {
   onWaiting?: () => void;
   onRoomCreated?: (code: string) => void;
+  /** The room's seating, resent whenever anyone moves. */
+  onLobby?: (lobby: LobbyView) => void;
   onRoomList?: (rooms: RoomSummary[]) => void;
   onJoinFailed?: (reason: string) => void;
   onError?: (error: string) => void;
@@ -113,6 +115,7 @@ export function driveMatchmaking(
     switch (msg.type) {
       case "waiting": handlers.onWaiting?.(); break;
       case "room-created": handlers.onRoomCreated?.(msg.code); break;
+      case "lobby": handlers.onLobby?.(msg.lobby as LobbyView); break;
       case "room-list": handlers.onRoomList?.(msg.rooms as RoomSummary[]); break;
       case "join-failed": handlers.onJoinFailed?.(msg.reason); break;
       case "start":

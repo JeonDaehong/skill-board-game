@@ -12,7 +12,7 @@ import {
 } from "@skill/engine";
 import type { Color } from "@skill/chess-core";
 import { makeEngine, type RoomEngine } from "./engine-adapter.js";
-import type { ClientMsg, Clocks, RoomInfo, ServerMsg, TimeControl } from "./protocol.js";
+import type { ClientMsg, Clocks, RoomInfo, Seat, ServerMsg, TimeControl } from "./protocol.js";
 
 interface Player {
   ws: WebSocket;
@@ -36,6 +36,14 @@ interface Player {
   roomId?: string;
   /** Code of the not-yet-started room this player is hosting, if any. */
   hosting?: string;
+  /** Code of the not-yet-started room this player is sitting in, if any. */
+  inLobby?: string;
+  /**
+   * A deck per mode, offered on the way in. Kept because a watcher may later
+   * move into the player seat, and the room's mode decides which one counts —
+   * asking again at that point would be a round trip for something already sent.
+   */
+  decks?: Partial<Record<GameMode, string[]>>;
   /**
    * Code of the room this socket is *watching*. Deliberately not `roomId`:
    * that field means "is one of the two people playing", and the close path
@@ -45,7 +53,12 @@ interface Player {
   watching?: string;
 }
 
-/** A created room waiting for a second player. */
+/**
+ * A created room, before anyone has started. Two player seats and three in the
+ * stands, and it stays here until the host says go — a room that began the
+ * moment a second person arrived started matches nobody agreed to, and left a
+ * third arrival clicking Join on a room that had already left this map.
+ */
 interface WaitingRoom {
   code: string;
   gameId: string;
@@ -54,6 +67,9 @@ interface WaitingRoom {
   password?: string;
   timeControl: TimeControl;
   host: Player;
+  /** The other player seat, empty until somebody takes it. */
+  guest?: Player;
+  watchers: Player[];
 }
 
 /**
@@ -223,6 +239,8 @@ function handle(player: Player, msg: ClientMsg): void {
     case "list-rooms": return listRooms(player);
     case "join-room": return joinRoom(player, msg);
     case "spectate": return spectate(player, msg);
+    case "take-seat": return takeSeat(player, msg.seat);
+    case "start-match": return startFromLobby(player);
     case "cancel": return cancel(player);
     case "action": return act(player, msg.action);
     case "rematch": return rematch(player);
@@ -313,7 +331,8 @@ function quickstart(
     // send the queue's own fixed clock, so in practice these agree.
     const control = waiting.timeControl ?? DEFAULT_TIME_CONTROL;
     const title = ranked ? "Ranked Match" : "Quick Match";
-    return startRoom(uniqueCode(), waiting, player, gameId, mode, title, control);
+    startRoom(uniqueCode(), waiting, player, gameId, mode, title, control);
+    return;
   }
   quickQueues.set(key, player);
   send(player.ws, { type: "waiting" });
@@ -332,7 +351,8 @@ function createRoom(
 
   const code = uniqueCode();
   player.hosting = code;
-  waitingRooms.set(code, {
+  player.inLobby = code;
+  const wr: WaitingRoom = {
     code,
     gameId: msg.gameId,
     mode: msg.mode,
@@ -340,23 +360,133 @@ function createRoom(
     password: msg.password?.trim() || undefined,
     timeControl: sanitizeControl(msg.timeControl),
     host: player,
-  });
+    watchers: [],
+  };
+  waitingRooms.set(code, wr);
   send(player.ws, { type: "room-created", code });
+  sendLobby(wr);
+}
+
+// ── the room lobby ───────────────────────────────────────────
+
+function seatOf(wr: WaitingRoom, player: Player): Seat {
+  if (wr.host === player) return "host";
+  if (wr.guest === player) return "guest";
+  return "watcher";
+}
+
+/** Push the seating to everyone in the room. Called on every change. */
+function sendLobby(wr: WaitingRoom): void {
+  wr.watchers = wr.watchers.filter(isOpen);
+  const view = {
+    code: wr.code,
+    title: wr.title,
+    gameId: wr.gameId,
+    mode: wr.mode,
+    locked: !!wr.password,
+    timeControl: wr.timeControl,
+    host: wr.host.nickname,
+    guest: wr.guest?.nickname,
+    guestTaken: !!wr.guest,
+    watchers: wr.watchers.map((w) => w.nickname),
+    watcherCap: MAX_SPECTATORS,
+    canStart: !!wr.guest,
+  };
+  for (const person of everyoneIn(wr)) {
+    send(person.ws, { type: "lobby", lobby: { ...view, you: seatOf(wr, person) } });
+  }
+}
+
+function everyoneIn(wr: WaitingRoom): Player[] {
+  return [wr.host, ...(wr.guest ? [wr.guest] : []), ...wr.watchers];
+}
+
+/**
+ * Move between the free player seat and the stands.
+ *
+ * The host's seat is not up for grabs — they made the room, and handing it over
+ * would need a whole negotiation for something nobody asked for.
+ */
+function takeSeat(player: Player, seat: Seat): void {
+  const wr = player.inLobby ? waitingRooms.get(player.inLobby) : undefined;
+  if (!wr) return send(player.ws, { type: "error", error: "not in a room" });
+  if (wr.host === player) return send(player.ws, { type: "error", error: "the host keeps their seat" });
+
+  if (seat === "guest") {
+    if (wr.guest && wr.guest !== player) {
+      return send(player.ws, { type: "error", error: "that seat is taken" });
+    }
+    // Sitting down means playing, and playing means a legal deck for this
+    // room's mode — which a watcher was never asked for on the way in.
+    const deck = player.decks?.[wr.mode] ?? [];
+    if (!checkDeck(player, wr.mode, deck)) return;
+    player.deck = deck;
+    wr.watchers = wr.watchers.filter((w) => w !== player);
+    wr.guest = player;
+  } else if (!wr.watchers.includes(player)) {
+    // Check before vacating. Clearing the seat first and *then* discovering the
+    // stands were full left the player in neither — seated nowhere, still in
+    // the room, and the seat they gave up already gone.
+    if (wr.watchers.filter(isOpen).length >= MAX_SPECTATORS) {
+      return send(player.ws, { type: "error", error: "the stands are full" });
+    }
+    if (wr.guest === player) wr.guest = undefined;
+    wr.watchers.push(player);
+  }
+  sendLobby(wr);
+}
+
+/** Host only: begin, with whoever is seated. Watchers come along. */
+function startFromLobby(player: Player): void {
+  const wr = player.inLobby ? waitingRooms.get(player.inLobby) : undefined;
+  if (!wr) return send(player.ws, { type: "error", error: "not in a room" });
+  if (wr.host !== player) return send(player.ws, { type: "error", error: "only the host can start" });
+  if (!wr.guest || !isOpen(wr.guest)) {
+    return send(player.ws, { type: "error", error: "nobody is in the other seat" });
+  }
+
+  const watchers = wr.watchers.filter(isOpen);
+  waitingRooms.delete(wr.code);
+  for (const person of everyoneIn(wr)) person.inLobby = undefined;
+  wr.host.hosting = undefined;
+
+  const room = startRoom(wr.code, wr.host, wr.guest, wr.gameId, wr.mode, wr.title, wr.timeControl, {
+    spectatable: true,
+    password: wr.password,
+  });
+  // Everyone who was in the stands stays in them, without having to find the
+  // room again in a list that no longer shows it as joinable.
+  for (const watcher of watchers.slice(0, MAX_SPECTATORS)) {
+    room.spectators.push(watcher);
+    watcher.watching = room.code;
+    send(watcher.ws, {
+      type: "start",
+      room: room.code,
+      color: "w",
+      gameId: room.gameId,
+      mode: room.mode,
+      timeControl: room.clock?.control ?? wr.timeControl,
+      spectator: true,
+      players: { w: room.conns.w.nickname, b: room.conns.b.nickname },
+    });
+  }
+  broadcast(room, []);
 }
 
 function listRooms(player: Player): void {
   const list: RoomInfo[] = [];
   for (const wr of waitingRooms.values()) {
     if (!isOpen(wr.host)) continue;
+    wr.watchers = wr.watchers.filter(isOpen);
     list.push({
       code: wr.code,
       title: wr.title,
       gameId: wr.gameId,
       mode: wr.mode,
       locked: !!wr.password,
-      players: 1,
+      players: wr.guest ? 2 : 1,
       live: false,
-      spectators: 0,
+      spectators: wr.watchers.length,
     });
   }
   // Matches already under way, so there is something to watch. Quick matches
@@ -383,28 +513,40 @@ function joinRoom(
   player: Player,
   msg: { code: string; password?: string; decks: Partial<Record<GameMode, string[]>> },
 ): void {
-  const wr = waitingRooms.get(msg.code?.trim().toLowerCase());
+  const code = msg.code?.trim().toLowerCase() ?? "";
+  const wr = waitingRooms.get(code);
   if (!wr || !isOpen(wr.host)) {
     if (wr) waitingRooms.delete(wr.code);
+    // The room list they clicked may be a few seconds stale. If the match has
+    // since begun, put them in the stands rather than telling them a room they
+    // can see does not exist.
+    if (rooms.has(code)) return spectate(player, msg);
     return send(player.ws, { type: "join-failed", reason: "Room not found" });
   }
   if (wr.password && wr.password !== (msg.password ?? "").trim()) {
     return send(player.ws, { type: "join-failed", reason: "Wrong password" });
   }
-  // The room's mode decides which of the joiner's decks is the relevant one,
-  // and that deck has to be legal for the game they are walking into.
-  const deck = msg.decks?.[wr.mode] ?? [];
-  if (!checkDeck(player, wr.mode, deck)) return;
 
-  waitingRooms.delete(wr.code);
-  wr.host.hosting = undefined;
-  player.deck = deck;
+  // Kept for later: a watcher who moves into the player seat needs a deck for
+  // this room's mode, and this is the only time the client offers one.
+  player.decks = msg.decks;
   player.gameId = wr.gameId;
   player.mode = wr.mode;
-  startRoom(wr.code, wr.host, player, wr.gameId, wr.mode, wr.title, wr.timeControl, {
-    spectatable: true,
-    password: wr.password,
-  });
+  player.inLobby = wr.code;
+
+  // The free player seat if there is one, the stands otherwise. Taking the
+  // seat means bringing a legal deck for the mode; watching does not.
+  const deck = msg.decks?.[wr.mode] ?? [];
+  if (!wr.guest && checkDeckRules(wr.mode, deck).ok) {
+    player.deck = deck;
+    wr.guest = player;
+  } else if (wr.watchers.length < MAX_SPECTATORS) {
+    wr.watchers.push(player);
+  } else {
+    player.inLobby = undefined;
+    return send(player.ws, { type: "join-failed", reason: "That room is full" });
+  }
+  sendLobby(wr);
 }
 
 /**
@@ -459,10 +601,40 @@ function spectate(player: Player, msg: { code: string; password?: string }): voi
 
 function cancel(player: Player): void {
   for (const [key, p] of quickQueues) if (p === player) quickQueues.delete(key);
-  if (player.hosting) {
-    waitingRooms.delete(player.hosting);
+  leaveLobby(player);
+}
+
+/**
+ * Take someone out of a room that has not started.
+ *
+ * The host leaving dissolves it — the room is theirs, and there is no rule for
+ * who would inherit it. Anyone else just frees their seat, and the people still
+ * in the room are told so the empty chair shows up straight away.
+ */
+function leaveLobby(player: Player): void {
+  const code = player.inLobby ?? player.hosting;
+  player.inLobby = undefined;
+  if (!code) return;
+  const wr = waitingRooms.get(code);
+  if (!wr) {
     player.hosting = undefined;
+    return;
   }
+
+  if (wr.host === player) {
+    waitingRooms.delete(code);
+    player.hosting = undefined;
+    for (const person of everyoneIn(wr)) {
+      if (person === player) continue;
+      person.inLobby = undefined;
+      send(person.ws, { type: "join-failed", reason: "The host closed the room" });
+    }
+    return;
+  }
+
+  if (wr.guest === player) wr.guest = undefined;
+  wr.watchers = wr.watchers.filter((w) => w !== player);
+  sendLobby(wr);
 }
 
 function startRoom(
@@ -475,7 +647,7 @@ function startRoom(
   control: TimeControl,
   /** Watchability travels with the room, and only a hand-made room has it. */
   open: { spectatable: boolean; password?: string } = { spectatable: false },
-): void {
+): Room {
   white.color = "w";
   black.color = "b";
   white.roomId = code;
@@ -499,6 +671,7 @@ function startRoom(
   send(black.ws, { type: "start", room: code, color: "b", gameId, mode, timeControl: control, opponent: white.nickname });
   armClock(room, control);
   broadcast(room, []);
+  return room;
 }
 
 // ── clocks ───────────────────────────────────────────────────
