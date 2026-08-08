@@ -469,8 +469,26 @@ function genCastling(
   if (isSquareAttacked(state.board, from, enemy, state, rules)) return;
 
   const rights = state.castling;
-  const kingSide = color === "w" ? rights.wK : rights.bK;
-  const queenSide = color === "w" ? rights.wQ : rights.bQ;
+  /**
+   * The rook has to actually be standing in the corner.
+   *
+   * In plain chess the rights flags imply this: nothing but a move can take a
+   * rook off a1, and a move clears the flag. Skill cards break that promise —
+   * 암살 kills it where it stands, 질주 walks it off, 대혼란 shuffles it into the
+   * middle of the board — and none of them goes through `applyMove`, so the
+   * flag survives its rook. Castling then ran anyway: the king landed on c1 and
+   * `applyMove` dutifully moved the empty a1 square onto d1, which is to say
+   * the king teleported two squares out of check for free.
+   *
+   * Checking the board rather than patching the flag from sixty-three card
+   * handlers is the version that cannot be forgotten by the sixty-fourth.
+   */
+  const rookAt = (file: number): boolean => {
+    const piece = state.board[makeSquare(file, rank, state)];
+    return !!piece && piece.color === color && piece.type === "r";
+  };
+  const kingSide = (color === "w" ? rights.wK : rights.bK) && rookAt(7);
+  const queenSide = (color === "w" ? rights.wQ : rights.bQ) && rookAt(0);
 
   if (kingSide) {
     const f5 = makeSquare(5, rank, state);

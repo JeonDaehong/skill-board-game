@@ -83,6 +83,18 @@ function pay(p: PlayerState, amount: number): void {
   p.cost -= amount - fromBonus;
 }
 
+/**
+ * Grant cost for this turn only (준비 태세, the gambling den's better rolls),
+ * up to the pool's ceiling. docs/skill.md prints the rule under the den's table
+ * — "코스트는 10을 초과할 수 없음" — and it is the pool it caps, not the grant:
+ * +3 on a full bank used to hand out thirteen spendable cost.
+ */
+function grantCost(s: MatchState, color: Color, n: number): void {
+  const p = s.players[color];
+  const room = modeRules(s.mode).costCap - p.cost;
+  p.bonusCost = Math.max(0, Math.min(p.bonusCost + n, room));
+}
+
 export function canAfford(p: PlayerState, cardId: string, s?: MatchState): boolean {
   return purse(p) >= cardCost(cardId, s, p.color);
 }
@@ -128,8 +140,6 @@ function followSquare(s: MatchState, from: Square, to: Square): void {
     const p = s.players[color];
     const i = p.summonSick.indexOf(from);
     if (i >= 0) p.summonSick[i] = to;
-    const j = p.locked.indexOf(from);
-    if (j >= 0) p.locked[j] = to;
     if (p.doubleMove?.sq === from) p.doubleMove.sq = to;
   }
 }
@@ -158,7 +168,6 @@ function destroyPiece(
   for (const p of ["w", "b"] as Color[]) {
     const ps = s.players[p];
     ps.summonSick = ps.summonSick.filter((x) => x !== sq);
-    ps.locked = ps.locked.filter((x) => x !== sq);
     if (ps.doubleMove?.sq === sq) ps.doubleMove = null;
   }
 
@@ -176,6 +185,23 @@ function destroyPiece(
   if (s.players[owner].lasting.some((l) => l.card === "beacon")) {
     drawFor(s, owner, 1, events, rng);
   }
+}
+
+/**
+ * Keep 정찰's notes pointing at the cards they were taken on.
+ *
+ * `revealed` is a list of positions in the opponent's hand, and a hand
+ * renumbers itself the moment a card leaves it. Scouting their third card and
+ * then watching them play their first left the third card's note sitting on
+ * what used to be their fourth — so the rail showed a card face up that had
+ * never been looked at, and hid the one that had. Call this with the index that
+ * just left `owner`'s hand.
+ */
+function forgetRevealed(s: MatchState, owner: Color, index: number): void {
+  const watcher = s.players[opposite(owner)];
+  watcher.revealed = watcher.revealed
+    .filter((i) => i !== index)
+    .map((i) => (i > index ? i - 1 : i));
 }
 
 /** Draw up to `n` cards, respecting the hand cap. */
@@ -258,7 +284,7 @@ function runTurnStartCards(s: MatchState, color: Color, events: MatchEvent[], rn
     if (p.hand.length >= modeRules(s.mode).handCap) p.cost = Math.min(cap, p.cost + 1);
     else drawFor(s, color, 1, events, rng);
   } else {
-    if (p.hand.length >= modeRules(s.mode).handCap) p.bonusCost += 3;
+    if (p.hand.length >= modeRules(s.mode).handCap) grantCost(s, color, 3);
     else drawFor(s, color, 2, events, rng);
   }
 }
@@ -436,6 +462,7 @@ function applyAction(
       if (summonZone(s, acting).length === 0) return fail("no room to summon");
       pay(p, price);
       p.hand.splice(action.index, 1);
+      forgetRevealed(s, acting, action.index);
       s.pending = { kind: "summon-place", color: acting, piece, card };
       break;
     }
@@ -518,10 +545,7 @@ function doMove(
   // A capture is a death like any other, so it runs the death hooks before the
   // board changes under them.
   if (captured && captured.color !== acting) {
-    const capturedSq = chosen.flags.includes("en-passant")
-      ? makeSquare(fileOf(chosen.to, s.chess), rankOf(chosen.from, s.chess), s.chess)
-      : chosen.to;
-    destroyPiece(s, capturedSq, events, rng);
+    destroyPiece(s, victimSquare(s, chosen.from, chosen.to)!, events, rng);
   }
   s.chess = applyMove(s.chess, chosen);
   followSquare(s, chosen.from, chosen.to);
@@ -553,6 +577,23 @@ function doMove(
   return { ok: true, state: s, events };
 }
 
+/**
+ * Which square the piece a move is about to take is actually standing on.
+ *
+ * Normally the destination — but an en-passant capture takes a pawn that is
+ * *beside* the destination, and every counter card that asks "what am I about
+ * to lose" read the destination square instead. 작은 방패 and 회피 both looked
+ * there, found nothing, and let the capture through with the cost already paid
+ * and the card already in the discard pile.
+ */
+function victimSquare(s: MatchState, from: Square, to: Square): Square | null {
+  const move = generateLegalMoves(s.chess, from, s.rules).find((m) => m.to === to);
+  if (!move?.captured) return null;
+  return move.flags.includes("en-passant")
+    ? makeSquare(fileOf(to, s.chess), rankOf(from, s.chess), s.chess)
+    : to;
+}
+
 /** The trap or terrain waiting on `sq` for a piece of `victim`, if any. */
 function terrainAt(s: MatchState, sq: Square, victim: Color): string | null {
   for (const color of ["w", "b"] as Color[]) {
@@ -565,6 +606,30 @@ function terrainAt(s: MatchState, sq: Square, victim: Color): string | null {
   return null;
 }
 
+/**
+ * Hold the piece on `sq` still through `victim`'s next turn — a swamp it walked
+ * into, a move that was taken back out from under it.
+ *
+ * This is an enchant rather than an entry in `players[victim].locked` because a
+ * turn-long hold has to survive the start of that turn, and `beginTurn` empties
+ * `locked` before it derives the rules from it. Both 늪지 and 무르기 promised a
+ * turn of immobility and delivered none: the lock existed only for the rest of
+ * the turn in which the piece had already moved.
+ *
+ * Two ticks, not one, for the same reason. The clock counts down as the
+ * victim's turn opens, so a hold of 1 would expire on the very turn it is meant
+ * to cover; at 2 it is still standing through that turn and gone by the next.
+ * Riding on the enchant list also means it follows the piece, dies with it, and
+ * shows up on the board as a badge — all of which `locked` never did.
+ */
+function holdPiece(s: MatchState, sq: Square, victim: Color, card: string): void {
+  if (!s.chess.board[sq]) return;
+  addEnchant(s, {
+    card, owner: opposite(victim), on: { kind: "piece", sq },
+    turnsLeft: 2, ticksOn: victim, data: { hold: 1 },
+  });
+}
+
 function applyTerrain(
   s: MatchState,
   sq: Square,
@@ -574,7 +639,7 @@ function applyTerrain(
   rng: Rng,
 ): void {
   if (card === "swamp") {
-    s.players[victim].locked.push(sq);
+    holdPiece(s, sq, victim, "swamp");
     events.push({ type: "toast", text: "fx.swamp" });
     return;
   }
@@ -604,7 +669,6 @@ function playSkill(
 ): ReduceResult {
   if (!cardsAllowed(s)) return fail("this mode plays no cards");
   if (!inCardPhase(s)) return fail("not the card step");
-  if (s.skillsPlayed >= 1) return fail("one skill card a turn");
 
   const p = s.players[acting];
   const id = p.hand[index];
@@ -612,12 +676,21 @@ function playSkill(
   const meta = skillMeta(id);
   if (!meta) return fail("unknown card");
   if (meta.speed === "counter") return fail("counter cards are played on the opponent's turn");
+  // 속공 is exempt from the one-card-a-turn limit — docs/skill.md defines it as
+  // "코스트만 있으면 다른 카드와 함께 사용 가능", and cost is the only thing that
+  // holds it back. Counting quick cards against the limit was what made 준비
+  // 태세 unplayable in practice: it granted +2 cost for the turn and then the
+  // limit forbade the card you were meant to spend it on. Every 1-cost cantrip
+  // had the same problem — spending your one card of the turn to draw two.
+  if (meta.speed !== "quick" && s.skillsPlayed >= 1) return fail("one skill card a turn");
   const price = cardCost(id, s, acting);
   if (purse(p) < price) return fail("not enough cost");
 
   pay(p, price);
   p.hand.splice(index, 1);
-  s.skillsPlayed += 1;
+  // Playing from hand renumbers it, and 정찰's notes are hand indices.
+  forgetRevealed(s, acting, index);
+  if (meta.speed !== "quick") s.skillsPlayed += 1;
 
   // Everything below runs on the clone, so a refusal here costs nothing: the
   // card is back in hand and the cost unspent the moment `fail` is returned.
@@ -673,9 +746,11 @@ function pickIsLegal(s: MatchState, color: Color, spec: TargetSpec, pick: Pick):
     if (spec.kinds.includes("enemy-piece") && piece.color !== color) return true;
     return false;
   }
+  if (pick.kind === "lasting") {
+    if (!spec.kinds.includes("lasting")) return false;
+    return [s.players.w, s.players.b].some((p) => p.lasting.some((l) => l.id === pick.id));
+  }
   if (pick.kind === "index") {
-    // A lasting card is picked by its effect id, so only its handler can judge it.
-    if (spec.kinds.includes("lasting")) return true;
     if (spec.kinds.includes("own-hand")) return pick.index < s.players[color].hand.length;
     if (spec.kinds.includes("opp-hand")) return pick.index < s.players[opposite(color)].hand.length;
     if (spec.kinds.includes("discard")) return pick.index < s.players[color].discard.length;
@@ -736,7 +811,8 @@ function reduceTargeting(
     const player = s.players[p.color];
     player.hand.push(p.card);
     player.cost = Math.min(modeRules(s.mode).costCap, player.cost + cardCost(p.card, s, p.color));
-    s.skillsPlayed = Math.max(0, s.skillsPlayed - 1);
+    // Only what the limit counted comes back off it; a quick card never went on.
+    if (meta.speed !== "quick") s.skillsPlayed = Math.max(0, s.skillsPlayed - 1);
     s.pending = null;
     return { ok: true, state: s, events };
   }
@@ -751,18 +827,23 @@ function reduceTargeting(
   if (action.type !== "target") return fail("expected a target");
   const pick: Pick | null =
     action.sq !== undefined ? { kind: "square", sq: action.sq }
+    : action.lasting !== undefined ? { kind: "lasting", id: action.lasting }
     : action.index !== undefined ? { kind: "index", index: action.index }
     : action.option !== undefined ? { kind: "option", option: action.option }
     : null;
   if (!pick) return fail("empty target");
   if (!pickIsLegal(s, p.color, spec, pick)) return fail("illegal target");
   if (current.length >= spec.max) return fail("that step is full");
-  if (
-    pick.kind === "square" &&
-    current.some((c) => c.kind === "square" && c.sq === pick.sq)
-  ) {
-    return fail("already picked");
-  }
+  // No answer twice in the same step. Squares were guarded from the start;
+  // indices were not, so 위장 and 강요 would happily take the same card in hand
+  // as both of their picks — and then remove two cards for it, the second of
+  // them one the player never pointed at.
+  const duplicate =
+    pick.kind === "square" ? current.some((c) => c.kind === "square" && c.sq === pick.sq)
+    : pick.kind === "index" ? current.some((c) => c.kind === "index" && c.index === pick.index)
+    : pick.kind === "lasting" ? current.some((c) => c.kind === "lasting" && c.id === pick.id)
+    : current.some((c) => c.kind === "option" && c.option === pick.option);
+  if (duplicate) return fail("already picked");
 
   const picks = p.picks.slice();
   picks[p.step] = [...current, pick];
@@ -816,6 +897,10 @@ const idxAt = (c: Ctx, step: number, i = 0): number | null => {
   const pick = c.picks[step]?.[i];
   return pick && pick.kind === "index" ? pick.index : null;
 };
+const lastingAt = (c: Ctx, step: number, i = 0): number | null => {
+  const pick = c.picks[step]?.[i];
+  return pick && pick.kind === "lasting" ? pick.id : null;
+};
 const optAt = (c: Ctx, step: number): string | null => {
   const pick = c.picks[step]?.[0];
   return pick && pick.kind === "option" ? pick.option : null;
@@ -839,7 +924,6 @@ const EFFECTS: Record<string, (c: Ctx) => string | void> = {
     c.s.players[c.me].seenTop = lib[lib.length - 1] ?? null;
   },
   clairvoyance: (c) => {
-    c.s.players[c.me].seesHand = true;
     c.s.players[c.me].revealed = c.s.players[c.opp].hand.map((_, i) => i);
   },
   divination: (c) => {
@@ -856,13 +940,28 @@ const EFFECTS: Record<string, (c: Ctx) => string | void> = {
     const p = c.s.players[c.me];
     if (i === null || !p.hand[i]) return "no card to give";
     p.discard.push(p.hand.splice(i, 1)[0]!);
+    forgetRevealed(c.s, c.me, i);
     drawFor(c.s, c.me, 2, c.events, c.rng);
   },
   disguise: (c) => {
     const p = c.s.players[c.me];
-    const picks = (c.picks[0] ?? []).filter((x) => x.kind === "index") as Extract<Pick, { kind: "index" }>[];
-    const ids = picks.map((x) => p.hand[x.index]).filter((x): x is string => !!x);
-    for (const id of ids) p.hand.splice(p.hand.indexOf(id), 1);
+    // Highest index first: taking cards out of a list renumbers everything
+    // after them, so removing in ascending order removes the wrong ones. This
+    // used to look each card up by *id* instead — and a card picked twice found
+    // itself once and then missed, and `splice(-1, 1)` threw away whatever
+    // happened to be last in hand.
+    const idx = (c.picks[0] ?? [])
+      .filter((x): x is Extract<Pick, { kind: "index" }> => x.kind === "index")
+      .map((x) => x.index)
+      .sort((a, b) => b - a);
+    const ids: string[] = [];
+    for (const i of idx) {
+      const card = p.hand[i];
+      if (!card) continue;
+      p.hand.splice(i, 1);
+      forgetRevealed(c.s, c.me, i);
+      ids.push(card);
+    }
     p.library.push(...ids);
     p.library = shuffle(p.library, c.rng);
     drawFor(c.s, c.me, ids.length, c.events, c.rng);
@@ -890,9 +989,9 @@ const EFFECTS: Record<string, (c: Ctx) => string | void> = {
     for (const i of idx) {
       const card = them.hand.splice(i, 1)[0];
       if (card) them.library.push(card);
+      forgetRevealed(c.s, c.opp, i);
     }
     them.library = shuffle(them.library, c.rng);
-    c.s.players[c.me].revealed = [];
   },
   exchange: (c) => {
     const mine = idxAt(c, 0);
@@ -905,7 +1004,7 @@ const EFFECTS: Record<string, (c: Ctx) => string | void> = {
     them.hand[theirs] = a;
     c.s.players[c.me].revealed = [];
   },
-  readiness: (c) => { c.s.players[c.me].bonusCost += 2; },
+  readiness: (c) => { grantCost(c.s, c.me, 2); },
 
   // ── enchants that simply attach ────────────────────────────
   bait: (c) => attach(c, "bait", 0, null),
@@ -986,24 +1085,28 @@ const EFFECTS: Record<string, (c: Ctx) => string | void> = {
     }
   },
   shatter: (c) => {
-    const i = idxAt(c, 0);
-    if (i === null) return "nothing picked";
-    // A lasting card is picked by its id; a hand card by its index. Ids run
-    // from 1 and hands are small, so the two are told apart by lookup.
-    for (const color of ["w", "b"] as Color[]) {
-      const p = c.s.players[color];
-      const at = p.lasting.findIndex((l) => l.id === i);
-      if (at >= 0) {
+    // A lasting card and a card in hand arrive as different kinds of pick, so
+    // there is nothing left to guess about which one was meant.
+    const lastingId = lastingAt(c, 0);
+    if (lastingId !== null) {
+      for (const color of ["w", "b"] as Color[]) {
+        const p = c.s.players[color];
+        const at = p.lasting.findIndex((l) => l.id === lastingId);
+        if (at < 0) continue;
         const [gone] = p.lasting.splice(at, 1);
         p.discard.push(gone!.card);
         c.events.push({ type: "destroyed", color, card: gone!.card });
         return;
       }
+      return "that card is not in play";
     }
+    const i = idxAt(c, 0);
+    if (i === null) return "nothing picked";
     const them = c.s.players[c.opp];
     const card = them.hand[i];
     if (!card) return "nothing to shatter";
     them.hand.splice(i, 1);
+    forgetRevealed(c.s, c.opp, i);
     them.discard.push(card);
     c.events.push({ type: "destroyed", color: c.opp, card });
   },
@@ -1163,8 +1266,17 @@ const EFFECTS: Record<string, (c: Ctx) => string | void> = {
         }
       }
       const spots = shuffle(home, c.rng);
+      // The home ranks can be short: the king holds a square, and enemy pieces
+      // may be squatting there too. Anyone who does not fit spills onto the
+      // nearest free square rather than being dropped — the old code wrote past
+      // the end of the list and the pieces it could not place simply ceased to
+      // exist, with no `slain` event and nothing on screen to say so.
+      const spill = (): Square | undefined => {
+        for (let sq = 0; sq < chess.board.length; sq++) if (!chess.board[sq]) return sq;
+        return undefined;
+      };
       pieces.forEach((piece, i) => {
-        const sq = spots[i];
+        const sq = spots[i] ?? spill();
         if (sq !== undefined) chess.board[sq] = piece;
       });
     }
@@ -1190,8 +1302,12 @@ const EFFECTS: Record<string, (c: Ctx) => string | void> = {
     if (!undo || undo.mover !== c.opp) return "there is nothing to take back";
     c.s.chess = cloneState(undo.chess);
     c.s.chess.turn = c.me;
+    // Restoring the board threw away every enchant's idea of where things are,
+    // so the hold goes on after the restore, aimed at the square the piece has
+    // just been put back on.
+    c.s.enchants = c.s.enchants.filter((e) => e.on.kind === "player" || !!c.s.chess.board[e.on.sq]);
     // They may not simply play the same move again next turn.
-    c.s.players[c.opp].locked.push(undo.from);
+    holdPiece(c.s, undo.from, c.opp, "rewind");
     c.s.undo = null;
   },
 
@@ -1334,6 +1450,7 @@ function reducePending(
     const card = player.hand[action.index];
     if (!card) return fail("no such card in hand");
     player.hand.splice(action.index, 1);
+    forgetRevealed(s, color, action.index);
     player.discard.push(card);
     s.pending = null;
     s.phase = nextPhase(s, "draw");
@@ -1433,6 +1550,7 @@ function reduceCounter(
   if (purse(responder) < price) return fail("not enough cost");
   pay(responder, price);
   responder.hand.splice(action.index, 1);
+  forgetRevealed(s, p.color, action.index);
   responder.discard.push(id);
   s.pending = null;
   events.push({ type: "played", color: p.color, card: id });
@@ -1463,6 +1581,7 @@ function resolveCounter(
       const card = s.players[mover].hand[blocked.index];
       if (card) {
         s.players[mover].hand.splice(blocked.index, 1);
+        forgetRevealed(s, mover, blocked.index);
         s.players[mover].discard.push(card);
         events.push({ type: "destroyed", color: mover, card });
       }
@@ -1510,7 +1629,8 @@ function resolveCounter(
     case "small-shield": {
       // A pawn shrugs the attack off; the attacker stays where it was.
       if (blocked.type !== "move") return applyAction(s, blocked, events, rng);
-      const victim = s.chess.board[blocked.to];
+      const victimSq = victimSquare(s, blocked.from, blocked.to);
+      const victim = victimSq === null ? null : s.chess.board[victimSq];
       if (!victim || victim.color !== responder || victim.type !== "p") {
         return applyAction(s, blocked, events, rng);
       }
@@ -1521,7 +1641,10 @@ function resolveCounter(
 
     case "evade": {
       if (blocked.type !== "move") return applyAction(s, blocked, events, rng);
-      const victimSq = blocked.to;
+      const victimSq = victimSquare(s, blocked.from, blocked.to);
+      if (victimSq === null || s.chess.board[victimSq]?.color !== responder) {
+        return applyAction(s, blocked, events, rng);
+      }
       const escapes = neighborsOf(s, victimSq).filter((sq) => !s.chess.board[sq]);
       if (escapes.length === 0) return applyAction(s, blocked, events, rng);
       const to = escapes[Math.floor(rng() * escapes.length)]!;

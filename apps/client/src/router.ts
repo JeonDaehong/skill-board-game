@@ -11,6 +11,12 @@ export interface AppContext {
   navigate: (screen: Screen) => void;
   /** Rebuild the current screen in place — used when the language changes. */
   reload: () => void;
+  /**
+   * Whether a given screen is the one on show. Used by work that finishes
+   * after the screen that started it may have been left — a background reload
+   * must not rebuild whatever the player moved on to.
+   */
+  isCurrent: (screen: Screen) => boolean;
 }
 
 export type Screen = (ctx: AppContext) => void | (() => void);
@@ -28,6 +34,9 @@ export function createApp(root: HTMLElement): AppContext {
     },
     reload() {
       if (current) ctx.navigate(current);
+    },
+    isCurrent(screen) {
+      return current === screen;
     },
   };
   return ctx;

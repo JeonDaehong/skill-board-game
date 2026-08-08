@@ -2,9 +2,10 @@
  * Who the player is, locally. One name, stored once and read everywhere it is
  * shown — the HUD chip, the profile page, the nameplate beside the board.
  *
- * There is no account system yet, so this is the whole of a player identity:
- * the first screen of the game asks for it, and until it is answered nothing
- * else is worth showing.
+ * The account owns the real nickname now (`account.ts`), and every screen that
+ * needs one still reads it from here: signing in writes the account's name
+ * into this key, so a screen built while offline, mid-login, or signed out all
+ * print the same thing without any of them knowing about the network.
  */
 const KEY = "skill-board:nickname";
 

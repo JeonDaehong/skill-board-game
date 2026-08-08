@@ -63,12 +63,16 @@ function posed(s: Setup = {}): MatchState {
 }
 
 /** Play white's first card and answer its target steps in order. */
-function play(m: MatchState, ...targets: Array<number | string | { sq: number }>): MatchState {
+function play(
+  m: MatchState,
+  ...targets: Array<number | string | { sq: number } | { lasting: number }>
+): MatchState {
   let s = expectOk(reduce(m, { type: "play-skill", index: 0 }));
   for (const t of targets) {
     const action =
       typeof t === "number" ? { type: "target" as const, index: t }
       : typeof t === "string" ? { type: "target" as const, option: t }
+      : "lasting" in t ? { type: "target" as const, lasting: t.lasting }
       : { type: "target" as const, sq: t.sq };
     s = expectOk(reduce(s, action));
   }
@@ -257,10 +261,16 @@ describe("turn shape: 일반 vs 속공", () => {
     expectOk(reduce(atMove(s), { type: "move", from: sq("b1"), to: sq("c3") }));
   });
 
-  it("only one skill card a turn", () => {
-    const m = posed({ hand: ["meditate", "spy"] });
-    const s = expectOk(reduce(m, { type: "play-skill", index: 0 }));
-    expect(expectFail(reduce(s, { type: "play-skill", index: 0 }))).toMatch(/one skill card/);
+  it("only one 일반·부여·지속 card a turn — 속공 is exempt", () => {
+    // docs/skill.md: 속공 is "코스트만 있으면 다른 카드와 함께 사용 가능", so the
+    // limit only ever counted the cards that spend the turn. See audit.test.ts.
+    const slow = posed({ hand: ["earthquake", "typhoon"] });
+    const spent = expectOk(reduce(slow, { type: "play-skill", index: 0 }));
+    expect(expectFail(reduce(spent, { type: "play-skill", index: 0 }))).toMatch(/one skill card/);
+
+    const quick = posed({ hand: ["meditate", "spy"] });
+    const first = expectOk(reduce(quick, { type: "play-skill", index: 0 }));
+    expect(reduce(first, { type: "play-skill", index: 0 }).ok).toBe(true);
   });
 
   it("지속 cards install themselves and bend the rules from then on", () => {
@@ -448,7 +458,7 @@ describe("board effects", () => {
   it("암살 refuses a king or a queen but takes anything else", () => {
     const m = posed({ hand: ["assassinate"], fen: "4k3/8/8/8/8/1q3n2/8/4K3 w - - 0 1" });
     const started = expectOk(reduce(m, { type: "play-skill", index: 0 }));
-    expect(expectFail(reduce(started, { type: "target", sq: sq("b3") }))).toMatch(/not the king or queen/);
+    expect(expectFail(reduce(started, { type: "target", sq: sq("b3") }))).toMatch(/illegal target/);
     const s = expectOk(reduce(started, { type: "target", sq: sq("f3") }));
     expect(s.chess.board[sq("f3")]).toBeNull();
   });
@@ -487,7 +497,9 @@ describe("board effects", () => {
     const back = play(s, );
     expect(back.chess.board[sq("e7")]?.type).toBe("p");
     expect(back.chess.board[sq("e5")]).toBeNull();
-    expect(back.players.b.locked).toContain(sq("e7"));
+    // The hold rides on the piece as an enchant, so it survives the start of
+    // black's turn — which is the whole turn it is supposed to cover.
+    expect(back.rules.squareRules?.[sq("e7")]?.immobile).toBe(true);
   });
 });
 
@@ -516,7 +528,7 @@ describe("card flow effects", () => {
   it("천리안 opens the whole hand", () => {
     const m = posed({ hand: ["clairvoyance"], oppHand: ["meditate", "spy", "scout"] });
     const s = expectOk(reduce(m, { type: "play-skill", index: 0 }));
-    expect(s.players.w.seesHand).toBe(true);
+    expect(s.players.w.revealed).toEqual([0, 1, 2]);
     expect(s.players.w.revealed).toEqual([0, 1, 2]);
   });
 
@@ -554,7 +566,7 @@ describe("card flow effects", () => {
   it("파괴 destroys a lasting card in play", () => {
     const m = posed({ hand: ["shatter"], oppLasting: ["beacon"] });
     const target = m.players.b.lasting[0]!.id;
-    const s = play(m, target);
+    const s = play(m, { lasting: target });
     expect(s.players.b.lasting).toHaveLength(0);
     expect(s.players.b.discard).toContain("beacon");
   });
@@ -575,7 +587,7 @@ describe("terrain", () => {
     // A 지속 card costs the move, so the walk in happens next turn.
     s.moveSpent = false;
     s = expectOk(reduce(atMove(s), { type: "move", from: sq("d2"), to: sq("d4") }));
-    expect(s.players.w.locked).toContain(sq("d4"));
+    expect(s.rules.squareRules?.[sq("d4")]?.immobile).toBe(true);
   });
 
   it("지뢰 kills whatever steps on it, but only refuses the king", () => {

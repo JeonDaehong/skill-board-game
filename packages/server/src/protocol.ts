@@ -34,6 +34,13 @@ export interface TimeControl {
  * matchmaking intent rather than something negotiated afterwards.
  */
 export type ClientMsg =
+  /**
+   * Who is holding this socket. Sent once, right after connecting, and only by
+   * a client that is logged in. The server checks the token against the session
+   * table — the name a player sits down under is the one on their account, not
+   * a string they typed into this message.
+   */
+  | { type: "auth"; token: string }
   // Matchmaking intents
   /**
    * `ranked` picks the queue, not just a label: a ladder match and a casual one
@@ -68,6 +75,8 @@ export type ServerMsg =
       gameId: string;
       mode: GameMode;
       timeControl: TimeControl;
+      /** The opponent's account nickname; absent if they are playing signed out. */
+      opponent?: string;
     }
   | {
       type: "state";

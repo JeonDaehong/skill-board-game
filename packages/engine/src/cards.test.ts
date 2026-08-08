@@ -81,8 +81,11 @@ function posed(id: string): MatchState {
   const m = createMatch("skill", [], []);
   m.chess = parseFen(SETUP[id] ?? SANDBOX);
   m.players.w.hand = [id];
-  m.players.w.cost = 10;
-  m.players.b.cost = 10;
+  // Not quite the cap: 준비 태세 grants cost for the turn, and the pool cannot
+  // exceed 10 — on a full bank the grant is correctly worth nothing, which
+  // would read here as a card that did nothing.
+  m.players.w.cost = 9;
+  m.players.b.cost = 9;
   // Distinct filler ids, so "the card left my hand" cannot be confused with
   // having drawn another copy of it.
   m.players.w.library = ["thrift", "beacon", "sanctuary", "plague", "espionage"];
@@ -112,7 +115,7 @@ function candidates(s: MatchState): Action[] {
       s.players[p.color].discard.forEach((_, i) => out.push({ type: "target", index: i }));
     } else if (kind === "lasting") {
       for (const c of ["w", "b"] as const) {
-        for (const l of s.players[c].lasting) out.push({ type: "target", index: l.id });
+        for (const l of s.players[c].lasting) out.push({ type: "target", lasting: l.id });
       }
     } else if (kind === "choice") {
       for (const option of spec.options ?? []) out.push({ type: "target", option });
@@ -187,7 +190,7 @@ describe("every card does something", () => {
     pull: (b, a) => boardDiffers(b, a),
     leap: (_b, a) => a.enchants.some((e) => e.card === "leap"),
     swamp: (_b, a) => a.players.w.lasting.some((l) => l.card === "swamp" && l.sq !== undefined),
-    clairvoyance: (_b, a) => a.players.w.seesHand,
+    clairvoyance: (_b, a) => a.players.w.revealed.length === a.players.b.hand.length,
     herald: (b, a) => a.players.w.discard.length < b.players.w.discard.length + 1,
     javelin: (b, a) => boardDiffers(b, a),
     citadel: (b, a) => boardDiffers(b, a),

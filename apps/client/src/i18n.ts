@@ -320,6 +320,11 @@ const STRINGS = {
   "profile.wear": ["Equip", "착용"],
   "profile.locked": ["In the shop", "상점에서 구매"],
   "profile.noRecords": ["No records", "기록 없음"],
+  // Sound lives under Options, not on the profile page — it is a property of
+  // the machine, not of the player. (`option.sound` is the live one.)
+  "sound.toggle": ["Sound on / off", "효과음 켜기 / 끄기"],
+  "sound.on": ["Sound effects on", "효과음 켜짐"],
+  "sound.off": ["Sound effects off", "효과음 꺼짐"],
   "profile.soon": ["Stats and ranking are coming soon.", "전적·랭킹 시스템은 준비 중입니다."],
   "shop.title": ["Shop", "상점"],
   "shop.pieces": ["Piece Cards", "기물 카드"],
@@ -426,6 +431,60 @@ const STRINGS = {
   "nick.placeholder": ["Your nickname", "닉네임 입력"],
   "nick.confirm": ["Start playing", "시작하기"],
   "nick.tooShort": ["Pick 2–16 characters.", "2~16자로 입력해주세요."],
+
+  // ── accounts ──────────────────────────────────────────────
+  "auth.welcome": ["Sign in to play", "로그인하고 시작하세요"],
+  "auth.signIn": ["Sign in", "로그인"],
+  "auth.signUp": ["Sign up", "회원가입"],
+  "auth.username": ["ID", "아이디"],
+  "auth.usernamePlaceholder": ["Letters, numbers, underscore", "영문·숫자·밑줄"],
+  "auth.password": ["Password", "비밀번호"],
+  "auth.passwordPlaceholder": ["At least 6 characters", "6자 이상"],
+  // Short enough to sit on one line in the label column beside its field.
+  "auth.confirm": ["Confirm", "확인"],
+  "auth.passwordAgain": ["Password again", "비밀번호 다시 입력"],
+  "auth.createTitle": ["Create an account", "계정 만들기"],
+  "auth.nickname": ["Nickname", "닉네임"],
+  "auth.nicknamePlaceholder": ["Shown to opponents", "상대에게 보이는 이름"],
+  "auth.working": ["Just a moment…", "잠시만요…"],
+  "auth.noAccount": ["No account yet? Sign up", "계정이 없으신가요? 회원가입"],
+  "auth.haveAccount": ["Already have an account? Sign in", "이미 계정이 있으신가요? 로그인"],
+  "auth.offlineTitle": ["Cannot reach the server", "서버에 연결할 수 없습니다"],
+  "auth.playOffline": ["Play offline", "오프라인으로 플레이"],
+  "auth.offlineNote": [
+    "Single player works offline. Progress stays on this device until you sign in.",
+    "싱글 플레이는 오프라인에서도 됩니다. 로그인 전까지 진행 상황은 이 기기에만 저장됩니다.",
+  ],
+  "auth.signOut": ["Sign out", "로그아웃"],
+  "auth.signedInAs": ["Signed in as {name}", "{name} 계정으로 로그인됨"],
+  "auth.offlineMode": ["Playing offline", "오프라인 플레이 중"],
+  "auth.signInCta": ["Sign in to save online", "로그인하고 온라인 저장"],
+  "auth.saveReplaced": [
+    "Progress from another device was loaded.",
+    "다른 기기의 진행 상황을 불러왔습니다.",
+  ],
+  // Error codes come back from the server; the sentences are ours.
+  "auth.err.username-length": ["ID must be 3–16 characters.", "아이디는 3~16자여야 합니다."],
+  "auth.err.username-chars": [
+    "ID can use letters, numbers and underscore only.",
+    "아이디는 영문·숫자·밑줄만 쓸 수 있습니다.",
+  ],
+  "auth.err.username-taken": ["That ID is taken.", "이미 사용 중인 아이디입니다."],
+  "auth.err.password-length": ["Password must be 6–72 characters.", "비밀번호는 6~72자여야 합니다."],
+  "auth.err.password-mismatch": ["The passwords do not match.", "비밀번호가 서로 다릅니다."],
+  "auth.err.nickname-length": ["Nickname must be 2–16 characters.", "닉네임은 2~16자여야 합니다."],
+  "auth.err.nickname-taken": ["That nickname is taken.", "이미 사용 중인 닉네임입니다."],
+  "auth.err.bad-credentials": ["Wrong ID or password.", "아이디 또는 비밀번호가 올바르지 않습니다."],
+  "auth.err.rate-limited": [
+    "Too many attempts. Try again in a few minutes.",
+    "시도가 너무 많습니다. 잠시 후 다시 시도해주세요.",
+  ],
+  "auth.err.unauthorised": ["Please sign in again.", "다시 로그인해주세요."],
+  "auth.err.offline": [
+    "Could not reach the server. Check your connection.",
+    "서버에 연결할 수 없습니다. 연결 상태를 확인해주세요.",
+  ],
+  "auth.err.server": ["Something went wrong. Try again.", "문제가 발생했습니다. 다시 시도해주세요."],
 } as const satisfies Record<string, Entry>;
 
 /** Text produced outside the client (server replies, engine events, results). */

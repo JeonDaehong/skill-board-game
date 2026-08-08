@@ -11,10 +11,12 @@
   "dependencies": {
     "@skill/chess-core": "workspace:*",
     "@skill/engine": "workspace:*",
-    "ws": "^8.18.0",
-    "@skill/games": "workspace:*"
+    "@skill/games": "workspace:*",
+    "better-sqlite3": "^12.11.1",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.10.0",
     "@types/ws": "^8.5.13",
     "tsx": "^4.19.0",

@@ -10,6 +10,8 @@ import {
 import { getNickname, NICK_MAX, setNickname } from "../player.js";
 import { isPlaced, loadRank, PLACEMENT_MATCHES } from "../rank.js";
 import { rankBadge } from "../ui/rank-badge.js";
+import { changeNickname, currentAccount, signOut } from "../account.js";
+import { makeAuth } from "./auth.js";
 
 /** Profile: nickname, the ladder standing, and the record behind it. */
 export const profileScreen: Screen = (ctx: AppContext) => {
@@ -38,25 +40,70 @@ export const profileScreen: Screen = (ctx: AppContext) => {
 
   let editing = false;
   const editBtn = el("button", { class: "btn btn-ghost btn-small", text: t("profile.edit") });
+  const nameError = el("div", { class: "form-error" });
+
+  /**
+   * A nickname is what opponents see, so while signed in it is the server's to
+   * hand out — two players called the same thing in a lobby is a bug you only
+   * find out about from the other player. Signed out, it is just a local label.
+   */
+  const saveName = async (): Promise<void> => {
+    const v = nameInput.value.trim() || "Player";
+    nameError.textContent = "";
+    if (currentAccount()) {
+      const res = await changeNickname(v);
+      if (!res.ok) {
+        nameError.textContent = t(`auth.err.${res.error}` as Parameters<typeof t>[0]);
+        return;
+      }
+    } else {
+      setNickname(v);
+    }
+    nameEl.textContent = getNickname();
+    toggleEdit(false);
+  };
+
   const editRow = el("div", { class: "edit-row hidden" }, [
     nameInput,
     el("button", {
       class: "btn btn-primary btn-small",
       text: t("common.save"),
-      onclick: () => {
-        const v = nameInput.value.trim() || "Player";
-        setNickname(v);
-        nameEl.textContent = v;
-        toggleEdit(false);
-      },
+      onclick: () => void saveName(),
     }),
   ]);
   editBtn.onclick = () => toggleEdit(!editing);
   function toggleEdit(on: boolean): void {
     editing = on;
     editRow.classList.toggle("hidden", !on);
+    if (!on) nameError.textContent = "";
     editBtn.textContent = on ? t("profile.cancelEdit") : t("profile.edit");
   }
+
+  // ── the account behind the name ────────────────────────────
+  const account = currentAccount();
+  const accountRow = el("div", { class: "glass account-row" }, [
+    el("span", {
+      class: "account-line",
+      text: account
+        ? t("auth.signedInAs").replace("{name}", account.username)
+        : t("auth.offlineMode"),
+    }),
+    account
+      ? el("button", {
+          class: "btn btn-ghost btn-small",
+          text: t("auth.signOut"),
+          onclick: () => {
+            // The save goes up before the token goes away, then the game starts
+            // over at the door — the next player at this browser is not this one.
+            void signOut().then(() => ctx.navigate(makeAuth()));
+          },
+        })
+      : el("button", {
+          class: "btn btn-primary btn-small",
+          text: t("auth.signInCta"),
+          onclick: () => ctx.navigate(makeAuth(profileScreen)),
+        }),
+  ]);
 
   // ── cosmetics ──────────────────────────────────────────────
   /**
@@ -126,6 +173,8 @@ export const profileScreen: Screen = (ctx: AppContext) => {
           editBtn,
         ]),
         editRow,
+        nameError,
+        accountRow,
         el("h3", { class: "section-title", text: t("profile.rank") }),
         el("div", { class: "glass rank-panel" }, [
           rankBadge(rank, "lg"),

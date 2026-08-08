@@ -141,7 +141,12 @@ export function createLocalSession(cfg: LocalConfig): Session {
       // 환각 makes the human's pieces read as pawns to whoever is fooled.
       const fooled = state.players[cfg.humanColor].lasting.some((l) => l.card === "hallucination");
       const disguise = fooled ? cfg.humanColor : undefined;
-      const forbidden = state.players[aiColor].locked[0];
+      // A piece the rules are holding still — a swamp it walked into, a move
+      // that was taken back. The move generator already refuses it; this only
+      // saves the search from spending its budget on a piece it cannot use.
+      const forbidden = Object.entries(state.rules.squareRules ?? {})
+        .filter(([sq, rule]) => rule.immobile && state.chess.board[Number(sq)]?.color === aiColor)
+        .map(([sq]) => Number(sq))[0];
       const thinkingFrom = state;
       void ai.search(state.chess, cfg.search, state.rules, forbidden, disguise).then((move) => {
         // The search took real time; the match may have been torn down, or the

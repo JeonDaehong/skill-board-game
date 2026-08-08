@@ -84,19 +84,12 @@ export interface PlayerState {
   // ── in-play bookkeeping ─────────────────────────────────────
   /** Pieces summoned this turn — they may not move under their own power. */
   summonSick: Square[];
-  /** Squares whose piece may not move this turn (늪지, 무르기). */
-  locked: Square[];
   /** Indices of the opponent's hand this side has seen (정찰·첩보). */
   revealed: number[];
-  /** 천리안: the whole opposing hand is open until that hand next changes. */
-  seesHand: boolean;
   /** 밀정: the opponent's top card, as last looked at. */
   seenTop: string | null;
   /** 더블: this piece may move a second time this turn. */
   doubleMove: { sq: Square; movesLeft: number } | null;
-  /** How many pieces this side may still move this turn without capturing
-   *  (희생의 대가). Zero the rest of the time. */
-  freeMoves: number;
 }
 
 /**
@@ -115,6 +108,16 @@ export type Pick =
   | { kind: "square"; sq: Square }
   /** An index into a hand or a discard pile. */
   | { kind: "index"; index: number }
+  /**
+   * A 지속 card in play, by its effect id.
+   *
+   * Not an `index`, even though both are numbers: 파괴 accepts either a lasting
+   * card or a card in the opponent's hand, and it had no way to tell which a
+   * bare number meant. Effect ids count from 1 and hand indices from 0, so
+   * aiming at their second card destroyed whichever lasting card had been
+   * played first instead.
+   */
+  | { kind: "lasting"; id: number }
   /** One of the answers the step offered. */
   | { kind: "option"; option: string };
 
@@ -166,7 +169,14 @@ export interface MatchState {
    * playing one is genuinely a choice between the card and the move.
    */
   moveSpent: boolean;
-  /** Skill cards played this turn. One per turn, counters excluded. */
+  /**
+   * Turn-spending cards played this turn — 일반, 부여 and 지속. One is the limit.
+   *
+   * 속공 and 대응 are not counted. docs/skill.md exempts both: a quick card is
+   * "코스트만 있으면 다른 카드와 함께 사용 가능", and a counter is played on the
+   * opponent's turn entirely. Counting quick cards here made 준비 태세 grant cost
+   * it then forbade you from spending.
+   */
   skillsPlayed: number;
   /** Every enchant in play, both sides'. */
   enchants: Enchant[];
@@ -220,7 +230,7 @@ export type Action =
   | { type: "summon-place"; sq: Square }
   // ── targeting ─────────────────────────────────────────────
   /** Answer the current target step. Exactly one field is meaningful, per kind. */
-  | { type: "target"; sq?: Square; index?: number; option?: string }
+  | { type: "target"; sq?: Square; index?: number; lasting?: number; option?: string }
   /** Finish a step that accepts a variable number of picks. */
   | { type: "target-done" }
   /** Abandon a card mid-targeting. The cost and the card come back. */

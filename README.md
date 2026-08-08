@@ -14,6 +14,7 @@ Three games ship right now: **Chess**, **Janggi**, and **Gomoku**.
 - **Tests**: Vitest
 - **Packages**: pnpm workspace (monorepo)
 - **Multiplayer**: Node + WebSocket (`packages/server`)
+- **Accounts**: same server, HTTP/JSON + SQLite (`better-sqlite3`)
 
 Later: Steam via Tauri/Electron wrapping, mobile via Capacitor.
 
@@ -25,11 +26,19 @@ skill-board-game/
 │   ├── chess-core/   pure chess rules engine (no DOM, fully tested)
 │   ├── engine/       deterministic match reducer — shared by client and server
 │   ├── games/        the other board games (janggi, omok, othello, quoridor)
-│   └── server/       Node + ws: rooms, matchmaking, authoritative reduce
+│   └── server/       Node: rooms + matchmaking over ws, accounts over HTTP
+│       └── src/
+│           ├── index.ts   one port: API, match socket, and the built client
+│           ├── api.ts      /api/signup /login /me /save /nickname
+│           ├── auth.ts     scrypt hashing, session tokens, rate limiting
+│           └── db.ts       SQLite: accounts, sessions, saves
 └── apps/
     └── client/       Vite app — screen router, plain DOM/Canvas, no framework
         └── src/
-            ├── main.ts         bootstrap (router → main menu)
+            ├── main.ts         bootstrap (router → sign in / main menu)
+            ├── account.ts      sign in / up, session, progress sync
+            ├── save.ts         the progress blob the server stores
+            ├── config.ts       where the server is (VITE_SERVER_URL)
             ├── router.ts       screen router + DOM helpers
             ├── games.ts        the game list shown in the picker
             ├── deck-config.ts  per-game deck / hand / clock rules
@@ -50,11 +59,15 @@ layer extends the logic only.
 
 ```bash
 pnpm install
-pnpm dev              # client dev server (http://localhost:5173)
-pnpm server           # multiplayer server (ws://localhost:8787)
+pnpm dev              # client dev server (http://localhost:5280)
+pnpm server           # game + account server (http://localhost:8787)
 pnpm test             # all tests
 pnpm build            # build everything
 ```
+
+The client asks you to sign in before anything else, so run the server too —
+or use the "Play offline" door the login screen offers once it fails to reach
+one. To let other people play, see [docs/deploy.md](docs/deploy.md).
 
 ## Status
 
@@ -66,6 +79,8 @@ pnpm build            # build everything
 - [x] AI opponent (negamax + alpha-beta, material + position eval)
 - [x] Janggi and Gomoku with their own AI
 - [x] Online play: quick match, create/join rooms, invite codes, rematch
+- [x] Accounts: sign up / sign in, progress synced across devices
+- [ ] Password reset (no email on an account yet)
 - [x] Deterministic match reducer (`@skill/engine`) shared by client and server
 - [ ] Card deck system — deck builder saves selections; card effects not wired up
 - [ ] Steam (PC) packaging (Tauri/Electron)

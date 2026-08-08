@@ -1,3 +1,10 @@
 packages:
   - "packages/*"
   - "apps/*"
+
+# better-sqlite3 is a native module: it has to run its install script to fetch
+# (or build) the binding for this Node ABI. pnpm blocks build scripts by
+# default, so it is allowed by name here rather than by an interactive prompt
+# nobody can answer in CI.
+onlyBuiltDependencies:
+  - better-sqlite3

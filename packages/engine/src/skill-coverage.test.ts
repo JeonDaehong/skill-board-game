@@ -110,7 +110,9 @@ function bookkeepingOnly(m: MatchState, card: string): MatchState {
   const meta = skillMeta(card)!;
   b.players.w.hand = b.players.w.hand.filter((c) => c !== card);
   b.players.w.cost -= cardCost(card, m, "w");
-  b.skillsPlayed += 1;
+  // 속공 does not count against the one-card-a-turn limit, so it does not move
+  // this counter either.
+  if (meta.speed !== "quick") b.skillsPlayed += 1;
   if (meta.speed === "normal") b.moveSpent = true;
   if (meta.type === "lasting") {
     b.players.w.lasting.push({ id: b.nextEffectId++, card, owner: "w" });
@@ -147,12 +149,9 @@ function player(s: MatchState, c: Color) {
     cost: p.cost,
     bonusCost: p.bonusCost,
     lasting: p.lasting.map((l) => ({ ...l, id: 0 })),
-    locked: [...p.locked].sort(),
     revealed: [...p.revealed].sort(),
-    seesHand: p.seesHand,
     seenTop: p.seenTop,
     doubleMove: p.doubleMove,
-    freeMoves: p.freeMoves,
   };
 }
 
@@ -183,7 +182,7 @@ function candidates(s: MatchState, color: Color, spec: TargetSpec): Pick[] {
       s.players[color].discard.forEach((_, i) => out.push({ kind: "index", index: i }));
     } else if (kind === "lasting") {
       for (const c of ["w", "b"] as Color[]) {
-        for (const l of s.players[c].lasting) out.push({ kind: "index", index: l.id });
+        for (const l of s.players[c].lasting) out.push({ kind: "lasting", id: l.id });
       }
     } else if (kind === "choice") {
       for (const o of spec.options ?? []) out.push({ kind: "option", option: o });
@@ -194,6 +193,7 @@ function candidates(s: MatchState, color: Color, spec: TargetSpec): Pick[] {
 
 const asAction = (p: Pick): Action =>
   p.kind === "square" ? { type: "target", sq: p.sq }
+  : p.kind === "lasting" ? { type: "target", lasting: p.id }
   : p.kind === "index" ? { type: "target", index: p.index }
   : { type: "target", option: p.option };
 
@@ -203,13 +203,20 @@ const asAction = (p: Pick): Action =>
  * — which is itself worth reporting: a card no set of targets can satisfy is a
  * card that can never be played.
  */
-function playAndTarget(m: MatchState, card: string): MatchState | null {
-  const first = reduce(m, { type: "play-skill", index: 0 });
+/**
+ * A fixed rng for the whole search, so a card whose effect involves a shuffle
+ * or a die roll is judged the same way every run. A test that is right most of
+ * the time is not a test.
+ */
+const FIXED = () => 0.42;
+
+function playAndTarget(m: MatchState, card: string, rng = FIXED): MatchState | null {
+  const first = reduce(m, { type: "play-skill", index: 0 }, rng);
   if (!first.ok) return null;
-  return walk(first.state, card);
+  return walk(first.state, card, rng);
 }
 
-function walk(s: MatchState, card: string, depth = 0): MatchState | null {
+function walk(s: MatchState, card: string, rng = FIXED, depth = 0): MatchState | null {
   if (depth > 8) return null;
   const pending = s.pending;
   if (!pending || pending.kind !== "targeting") return s;
@@ -220,7 +227,7 @@ function walk(s: MatchState, card: string, depth = 0): MatchState | null {
   const options = candidates(s, pending.color, spec);
 
   for (const pick of options) {
-    const r = reduce(s, asAction(pick));
+    const r = reduce(s, asAction(pick), rng);
     if (!r.ok) continue;
     // A step that wants more than one pick is fed greedily; a step that is now
     // full has already resolved inside the reducer.
@@ -229,17 +236,17 @@ function walk(s: MatchState, card: string, depth = 0): MatchState | null {
       const filled = next.pending.picks[pending.step]?.length ?? 0;
       if (filled > already && filled < spec.max) {
         for (const extra of options) {
-          const more = reduce(next, asAction(extra));
+          const more = reduce(next, asAction(extra), rng);
           if (more.ok) next = more.state;
           if (next.pending?.kind !== "targeting" || next.pending.step !== pending.step) break;
         }
         if (next.pending?.kind === "targeting" && next.pending.step === pending.step) {
-          const done = reduce(next, { type: "target-done" });
+          const done = reduce(next, { type: "target-done" }, rng);
           if (done.ok) next = done.state;
         }
       }
     }
-    const out = walk(next, card, depth + 1);
+    const out = walk(next, card, rng, depth + 1);
     if (out) return out;
   }
   return null;
@@ -253,7 +260,19 @@ function walk(s: MatchState, card: string, depth = 0): MatchState | null {
  * fires, which is the part a diff at play time could never see.
  */
 const DEFERRED = new Set(SKILLS.filter((s) => s.type === "lasting").map((s) => s.id));
-const IMMEDIATE = SKILLS.filter((s) => s.speed !== "counter" && !DEFERRED.has(s.id));
+
+/**
+ * 위장 puts cards back, shuffles, and draws the same number, so between them the
+ * hand and the library always hold the same cards — the only thing that moves is
+ * which side of the line each one is on. A shuffle that deals the picked cards
+ * straight back is a legal outcome of a working card, and the diff below cannot
+ * tell it apart from a card that did nothing. It gets the behavioural test under
+ * "위장 really redraws" instead, which checks the part that is actually promised.
+ */
+const UNJUDGEABLE = new Set(["disguise"]);
+const IMMEDIATE = SKILLS.filter(
+  (s) => s.speed !== "counter" && !DEFERRED.has(s.id) && !UNJUDGEABLE.has(s.id),
+);
 
 describe("skill coverage: every card that resolves at once does something", () => {
   for (const meta of IMMEDIATE) {
@@ -268,6 +287,38 @@ describe("skill coverage: every card that resolves at once does something", () =
       ).not.toEqual(fingerprint(expected));
     });
   }
+});
+
+describe("위장 really redraws", () => {
+  // A library of five cards none of which are in hand, so a hand that comes back
+  // holding something else came out of the deck.
+  const pose = (): MatchState =>
+    posed("disguise", {
+      hand: ["dash", "spy"],
+      library: ["meditate", "scout", "readiness", "offering", "bait"],
+    });
+
+  it("hands back exactly as many cards as it took", () => {
+    const after = playAndTarget(pose(), "disguise")!;
+    expect(after.players.w.hand).toHaveLength(2);
+    expect(after.players.w.library).toHaveLength(5);
+    // Nothing is created or lost: the two picks are still somewhere.
+    const all = [...after.players.w.hand, ...after.players.w.library].sort();
+    expect(all).toEqual(
+      ["dash", "spy", "meditate", "scout", "readiness", "offering", "bait"].sort(),
+    );
+  });
+
+  it("deals a different hand than the one it took", () => {
+    // Drawing the same two back is a legal shuffle, so the claim is about the
+    // deal in general, not any one of them: across a spread of shuffles some
+    // must come back with cards that were in the library.
+    const hands = [0, 0.2, 0.4, 0.6, 0.8, 0.99].map((v) => {
+      const after = playAndTarget(pose(), "disguise", () => v)!;
+      return [...after.players.w.hand].sort().join(",");
+    });
+    expect(hands.some((h) => h !== "dash,spy")).toBe(true);
+  });
 });
 
 describe("skill coverage: every card is playable at all", () => {

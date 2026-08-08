@@ -6,6 +6,10 @@ coverage/
 .vite/
 .screenshots/
 
+# The account database. Player data, and the one file on the server that is not
+# reproducible from this repo — it belongs in a backup, never in a commit.
+packages/server/data/
+
 # Watermark-stripped sheets are regenerated from assets/raw by tools/dewatermark.py
 apps/client/public/assets/clean/
 tools/contact-*.png

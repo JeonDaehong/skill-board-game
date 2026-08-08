@@ -401,7 +401,14 @@ button { font-family: inherit; }
   height: 100vh; overflow-y: auto;
   padding: 74px 10px 110px;
   display: flex; flex-direction: column; gap: 16px; align-items: stretch;
+  /* The bar itself is hidden, not the scrolling. A tab page is a full-height
+     column with a title at the top and a nav bar pinned at the bottom, so the
+     track ran the entire window edge — a grey rail down the side of a wood-and
+     -gold screen. The content still scrolls by wheel, drag and keyboard. */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
+.tab-scroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .tab-scroll .shop-section-note,
 .tab-scroll .coming-note,
 .tab-scroll .rank-hint { max-width: 62ch; }
@@ -1299,6 +1306,22 @@ button { font-family: inherit; }
   transition: color 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
 }
 .duel-exit:hover { color: #fff6df; border-color: var(--gold); box-shadow: 0 0 14px rgba(216, 180, 90, 0.28); }
+/* Sound on or off, on the bar rather than buried in a settings screen — the
+   moment you want it is the moment it is making a noise at you. */
+.duel-sound {
+  width: 34px; height: 34px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  border-radius: 50%; cursor: pointer;
+  font-size: 0.95rem; line-height: 1;
+  background: linear-gradient(180deg, #33241a, #241811);
+  border: 1px solid var(--frame);
+  transition: border-color 0.14s ease, box-shadow 0.14s ease, opacity 0.14s ease;
+}
+.duel-sound:hover { border-color: var(--gold); box-shadow: 0 0 14px rgba(216, 180, 90, 0.28); }
+.duel-sound.off { opacity: 0.55; }
+.sound-row { display: flex; padding: 12px; }
+.sound-row-btn { flex: 1; justify-content: center; }
+.sound-row-btn.off { opacity: 0.7; }
 
 /* ── The nameplates ──────────────────────────────────────────
    In the left margin — opponent at the top of it, you at the bottom — rather
@@ -1519,13 +1542,39 @@ button { font-family: inherit; }
    rather than as three cards materialising at once. */
 .hand-card.pre-deal { opacity: 0; }
 .hand-card.dealing {
-  animation: card-deal 0.52s cubic-bezier(0.18, 0.86, 0.32, 1.1) backwards;
-  animation-delay: calc(var(--d, 0) * 130ms);
+  animation: card-deal 0.44s cubic-bezier(0.18, 0.86, 0.32, 1.1) backwards;
+  /* One card at a time: the gap is longer than the flight, so the second card
+     leaves the deck after the first has landed. Overlapping them (the old
+     130ms) turned a two-card draw into one smear you could not count. */
+  animation-delay: calc(var(--d, 0) * 300ms);
 }
 @keyframes card-deal {
   0% { opacity: 0; transform: translate(var(--fx, 0px), var(--fy, 0px)) rotate(-26deg) scale(0.42); }
   40% { opacity: 1; }
+  /* The overshoot is the landing — it is what makes each card read as having
+     arrived rather than as having faded up where it already was. */
+  86% { opacity: 1; transform: translate(0, -7px) rotate(1.5deg) scale(1.06); }
   100% { opacity: 1; transform: translate(0, 0) rotate(0deg) scale(1); }
+}
+
+/* The deck counting off what it sends. One pip per card, in step with the
+   flight, so "how many did that draw?" is answered while it is happening. */
+.deal-count {
+  position: absolute; left: 50%; top: -10px;
+  transform: translateX(-50%);
+  font-family: var(--display); font-weight: 700; font-size: 1.15rem;
+  color: var(--gold-lt);
+  text-shadow: 0 0 10px rgba(216, 180, 90, 0.85), 0 2px 4px rgba(0, 0, 0, 0.8);
+  pointer-events: none; z-index: 8;
+  /* Shorter than the 300ms between cards on purpose: two pips alive at once
+     sit on the same spot and read as one smudged number, which is worse than
+     no counter at all. Each one is gone before the next arrives. */
+  animation: deal-count 0.34s ease-out forwards;
+}
+@keyframes deal-count {
+  0% { opacity: 0; transform: translate(-50%, 6px) scale(0.6); }
+  35% { opacity: 1; transform: translate(-50%, -6px) scale(1.2); }
+  100% { opacity: 0; transform: translate(-50%, -20px) scale(1); }
 }
 
 /* ── The back of a card ──────────────────────────────────────
@@ -1778,9 +1827,26 @@ button { font-family: inherit; }
   box-shadow: inset 0 -2px 0 rgba(216, 180, 90, 0.5), 0 -14px 40px -14px rgba(216, 180, 90, 0.45);
   animation: region-breathe 2.4s ease-in-out infinite;
 }
-.duel-screen[data-step="skill"] .hand-card.playable,
-.duel-screen[data-step="summon"] .hand-card.playable {
+/* Only the cards the step is actually asking for. The summon step accepts a
+   skill card as well, but pointing at every playable card at once points at
+   nothing — the glow names the step's own cards and the rest stay clickable
+   and quiet. */
+.duel-screen[data-step="skill"] .hand-card.playable.kind-skill,
+.duel-screen[data-step="summon"] .hand-card.playable.kind-piece {
   animation: card-beckon 2.4s ease-in-out infinite;
+}
+/* The draw step: the deck is the only thing to click, so it gets a ring that
+   travels rather than a glow that pulses in place. */
+.duel-screen[data-step="draw"] .zone-block.me .zone-deck.ready::before {
+  content: ""; position: absolute; inset: -7px;
+  border-radius: calc(var(--r-sm) + 7px);
+  border: 2px solid var(--gold-lt);
+  pointer-events: none;
+  animation: zone-ping 1.5s ease-out infinite;
+}
+@keyframes zone-ping {
+  0% { opacity: 0.9; transform: scale(0.9); }
+  70%, 100% { opacity: 0; transform: scale(1.14); }
 }
 /* On the move step the board itself is the control. */
 .duel-screen[data-step="move"] .board-canvas {
@@ -1802,6 +1868,8 @@ button { font-family: inherit; }
 @media (prefers-reduced-motion: reduce) {
   .duel-screen[data-step] .my-hand,
   .duel-screen[data-step] .hand-card.playable,
+  .duel-screen[data-step="draw"] .zone-block.me .zone-deck.ready::before,
+  .deal-count,
   .zone-deck.ready { animation: none; }
 }
 
@@ -1951,6 +2019,39 @@ button { font-family: inherit; }
 .nick-title { margin: 0; font-family: var(--display); font-size: 1.24rem; font-weight: 700; color: var(--gold-lt); }
 .nick-body { margin: 0; font-size: 0.86rem; line-height: 1.5; color: var(--muted); }
 .nick-input { text-align: center; font-size: 1.1rem; letter-spacing: 0.04em; }
+
+/* ── The door: sign in / sign up ─────────────────────────────
+   One card, two modes. The fields are labelled on their left rather than by a
+   placeholder, because a placeholder disappears the moment you start typing —
+   and on the one screen in the game where a mistyped field means a rejection,
+   the label has to still be there when the error arrives. */
+.auth-screen { justify-content: center; gap: 22px; }
+.auth-card { align-items: stretch; text-align: center; gap: 11px; }
+.auth-card .nick-avatar { align-self: center; }
+.auth-card .nick-title { margin-bottom: 4px; }
+.field-row { display: flex; align-items: center; gap: 10px; text-align: left; }
+.field-row .field-input { flex: 1; min-width: 0; }
+.field-label {
+  width: 74px; flex: none;
+  font-size: 0.74rem; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--muted);
+}
+.auth-switch { font-size: 0.8rem; padding: 8px 0; opacity: 0.85; }
+/* Only shown once a call has actually failed to reach the server. */
+.auth-offline {
+  display: flex; flex-direction: column; gap: 8px;
+  margin-top: 4px; padding-top: 12px;
+  border-top: 1px solid var(--frame);
+}
+.auth-offline-note { font-size: 0.78rem; line-height: 1.5; color: var(--muted); }
+
+/* Who you are signed in as, on the profile page. */
+.account-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 16px;
+}
+.account-line { font-size: 0.84rem; color: var(--muted); }
+.sound-chip.off { opacity: 0.7; }
 
 /* ── Quick match: casual and ranked ──────────────────────────
    The clock rides on the button. The two queues run different controls, and

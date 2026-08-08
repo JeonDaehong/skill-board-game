@@ -2,8 +2,9 @@ import { el, type AppContext, type Screen } from "../router.js";
 import { menuScreen } from "./menu.js";
 import { formatCoins, redeemCoupon } from "../economy.js";
 import { getLang, setLang, t, type Lang } from "../i18n.js";
+import { isMuted, playSfx, primeAudio, setMuted } from "../audio.js";
 
-/** Placeholder options screen — settings get wired up as features land. */
+/** Settings: sound, theme, language, and the coupon box. */
 export const optionScreen: Screen = (ctx: AppContext) => {
   const row = (label: string, control: Node) =>
     el("div", { class: "option-row" }, [el("span", { text: label }), control]);
@@ -22,6 +23,32 @@ export const optionScreen: Screen = (ctx: AppContext) => {
       }),
     ),
   );
+
+  // ── sound ──────────────────────────────────────────────────
+  /**
+   * Sound belongs here rather than on the profile page: it is a property of
+   * the machine you are sitting at, not of who you are — and it is the setting
+   * players go looking for under Options in every other game they own.
+   *
+   * The switch demonstrates itself. Turning sound back on plays a click, which
+   * is both the confirmation and the volume check.
+   */
+  const soundBtn = el("button", { class: "chip sound-chip" });
+  const paintSound = (): void => {
+    const off = isMuted();
+    soundBtn.textContent = `${off ? "🔇" : "🔊"}  ${off ? t("sound.off") : t("sound.on")}`;
+    soundBtn.classList.toggle("off", off);
+    soundBtn.setAttribute("aria-pressed", off ? "true" : "false");
+  };
+  soundBtn.onclick = () => {
+    setMuted(!isMuted());
+    paintSound();
+    if (!isMuted()) {
+      primeAudio();
+      playSfx("select");
+    }
+  };
+  paintSound();
 
   // ── coupon redemption ──────────────────────────────────────
   const couponInput = el("input", { class: "field-input coupon-input" }) as HTMLInputElement;
@@ -56,7 +83,7 @@ export const optionScreen: Screen = (ctx: AppContext) => {
   const screen = el("div", { class: "screen option-screen" }, [
     el("h1", { class: "screen-title", text: t("option.title") }),
     el("div", { class: "option-list" }, [
-      row(t("option.sound"), el("span", { class: "chip", text: t("option.comingSoon") })),
+      row(t("option.sound"), soundBtn),
       row(t("option.boardTheme"), el("span", { class: "chip", text: "Classic" })),
       row(t("option.language"), langPick),
       couponRow,

@@ -38,12 +38,9 @@ function makePlayer(color: Color, deck: string[], rng: Rng): PlayerState {
     bonusCost: 0,
     lasting: [],
     summonSick: [],
-    locked: [],
     revealed: [],
-    seesHand: false,
     seenTop: null,
     doubleMove: null,
-    freeMoves: 0,
   };
 }
 
@@ -159,6 +156,12 @@ function ruleForEnchant(e: Enchant, pieceType: string | undefined): SquareRule |
       const partner = typeof e.data?.partner === "number" ? e.data.partner : null;
       return partner === null ? null : { noCaptureOn: [partner] };
     }
+    case "swamp":
+    case "rewind":
+      // Not the card itself — the hold it left on a piece (see holdPiece). Both
+      // cards also exist as a 지속 card and a 일반 card respectively, and neither
+      // of those reaches here: only what is attached to a piece does.
+      return { immobile: true };
     default:
       return null;
   }
@@ -198,8 +201,6 @@ export function deriveRules(state: MatchState): SkillRules {
         rules.agileKnight = { ...rules.agileKnight, [color]: true };
       }
     }
-    // Pieces held down for the turn — a swamp, or a move that was rewound.
-    for (const sq of p.locked) put(sq, { immobile: true });
     // A piece summoned this turn holds its square but cannot march yet.
     for (const sq of p.summonSick) put(sq, { immobile: true });
   }
@@ -272,10 +273,8 @@ export function beginTurn(
   const p = state.players[color];
 
   p.summonSick = []; // pieces summoned last turn are free to move now
-  p.locked = []; // swamp / rewind locks last exactly one turn
   p.bonusCost = 0;
   p.doubleMove = null;
-  p.freeMoves = 0;
   state.moveSpent = false;
   state.skillsPlayed = 0;
 

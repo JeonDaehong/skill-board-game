@@ -11,8 +11,10 @@ import { menuScreen } from "./screens/menu.js";
 import type { RoomSummary } from "./types.js";
 import { getTimeControlId, timeControlById, type TimeControl } from "./clock.js";
 import { t } from "./i18n.js";
+import { SERVER_URL } from "./config.js";
+import { authToken } from "./account.js";
 
-export const SERVER_URL = "ws://localhost:8787";
+export { SERVER_URL } from "./config.js";
 
 /** The wire form the server speaks: a Fischer main + increment pair. */
 export interface WireTimeControl {
@@ -78,6 +80,8 @@ export function driveMatchmaking(
   let gameCleanup: (() => void) | null = null;
   let myColor: Color = "w";
   let gameId = "chess";
+  /** The opponent's account name, when they are playing signed in. */
+  let opponentName: string | undefined;
   // The room's clock is the server's to set — the host picked it, and for a
   // quick match whoever was queued first did. Mirror whatever it announces.
   let control: TimeControl = timeControlById(getTimeControlId());
@@ -90,7 +94,14 @@ export function driveMatchmaking(
     return { send: () => {}, cleanup: () => {} };
   }
 
-  ws.onopen = () => ws.send(JSON.stringify(initial));
+  ws.onopen = () => {
+    // Identify before asking for a match, so the room knows whose nickname to
+    // show the opponent. Fire and forget: the server accepts an anonymous
+    // socket, it just cannot name it.
+    const token = authToken();
+    if (token) ws.send(JSON.stringify({ type: "auth", token }));
+    ws.send(JSON.stringify(initial));
+  };
   ws.onerror = () => handlers.onError?.(t("net.unreachableHint"));
   ws.onclose = () => { if (!handedOff) handlers.onError?.(t("net.closed")); };
 
@@ -104,6 +115,7 @@ export function driveMatchmaking(
       case "start":
         myColor = msg.color;
         gameId = msg.gameId ?? "chess";
+        opponentName = typeof msg.opponent === "string" ? msg.opponent : undefined;
         if (msg.timeControl) control = fromWire(msg.timeControl);
         break;
       case "state":
@@ -112,7 +124,10 @@ export function driveMatchmaking(
           ctx.root.replaceChildren();
           if (gameId === "chess") {
             const session = createRemoteSession(ws, myColor, msg.state as MatchState);
-            gameCleanup = mountGame(ctx, session, () => ctx.navigate(menuScreen), control, { ranked });
+            gameCleanup = mountGame(ctx, session, () => ctx.navigate(menuScreen), control, {
+              ranked,
+              opponentName,
+            });
           } else {
             const view = getView(gameId, myColor as Player);
             const session = createRemoteBoardSession(ws, myColor as Player, msg.state);

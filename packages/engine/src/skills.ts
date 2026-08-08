@@ -128,6 +128,10 @@ const exactly = (kind: TargetKind, n: number, extra: Partial<TargetSpec> = {}): 
   ({ kinds: [kind], min: n, max: n, ...extra });
 
 const PAWN: PieceType[] = ["p"];
+/** Everything a card may kill or crown: no king, no queen. */
+const MINOR: PieceType[] = ["p", "n", "b", "r"];
+/** What 희생의 대가 may spend — "킹·폰을 제외한 내 기물". */
+const OFFICER: PieceType[] = ["n", "b", "r", "q"];
 
 /**
  * The sixty-three cards, grouped by cost the way docs/skill.md lists them.
@@ -158,7 +162,7 @@ export const SKILLS: SkillMeta[] = [
   // ── 3 cost ────────────────────────────────────────────────
   { id: "clairvoyance", cost: 3, type: "active", speed: "quick" },
   { id: "herald", cost: 3, type: "active", speed: "quick", targets: [one("discard")] },
-  { id: "javelin", cost: 3, type: "active", speed: "normal", targets: [one("own-piece", { pieces: PAWN }), one("enemy-piece", { king: true })] },
+  { id: "javelin", cost: 3, type: "active", speed: "normal", targets: [one("own-piece", { pieces: PAWN }), one("enemy-piece")] },
   { id: "citadel", cost: 3, type: "active", speed: "normal", targets: [one("choice", { options: ["king-side", "queen-side"] })] },
   { id: "large-sandbag", cost: 3, type: "enchant", speed: "normal", targets: [one("enemy-piece")] },
   { id: "beacon", cost: 3, type: "lasting", speed: "normal" },
@@ -181,7 +185,7 @@ export const SKILLS: SkillMeta[] = [
 
   // ── 5 cost ────────────────────────────────────────────────
   { id: "double", cost: 5, type: "active", speed: "quick", targets: [one("own-piece", { king: true })] },
-  { id: "blood-price", cost: 5, type: "active", speed: "quick", targets: [one("own-piece")] },
+  { id: "blood-price", cost: 5, type: "active", speed: "quick", targets: [one("own-piece", { pieces: OFFICER })] },
   { id: "promotion", cost: 5, type: "active", speed: "normal", targets: [one("own-piece", { pieces: PAWN }), one("choice", { options: ["n", "b", "r"] })] },
   { id: "double-image", cost: 5, type: "active", speed: "normal", targets: [one("own-piece"), one("empty")] },
   { id: "kings-strike", cost: 5, type: "active", speed: "normal", targets: [one("enemy-piece")] },
@@ -193,7 +197,7 @@ export const SKILLS: SkillMeta[] = [
   // ── 6 cost ────────────────────────────────────────────────
   { id: "shatter", cost: 6, type: "active", speed: "quick", targets: [{ kinds: ["lasting", "opp-hand"], min: 1, max: 1 }] },
   { id: "exchange", cost: 6, type: "active", speed: "quick", targets: [one("own-hand"), one("opp-hand")] },
-  { id: "awaken", cost: 6, type: "active", speed: "normal", targets: [one("own-piece")] },
+  { id: "awaken", cost: 6, type: "active", speed: "normal", targets: [one("own-piece", { pieces: MINOR })] },
   { id: "brainwash", cost: 6, type: "enchant", speed: "normal", targets: [{ kinds: ["enemy-piece"], min: 1, max: 3, pieces: PAWN }] },
   { id: "bond-chain", cost: 6, type: "enchant", speed: "normal", targets: [one("own-piece", { king: true }), one("enemy-piece", { king: true })] },
   { id: "fate-chain", cost: 6, type: "enchant", speed: "normal", targets: [one("own-piece", { king: true }), one("enemy-piece", { king: true })] },
@@ -203,7 +207,7 @@ export const SKILLS: SkillMeta[] = [
 
   // ── 7 cost ────────────────────────────────────────────────
   { id: "pandemonium", cost: 7, type: "active", speed: "normal" },
-  { id: "assassinate", cost: 7, type: "active", speed: "normal", targets: [one("enemy-piece")] },
+  { id: "assassinate", cost: 7, type: "active", speed: "normal", targets: [one("enemy-piece", { pieces: MINOR })] },
   { id: "regicide", cost: 7, type: "active", speed: "normal", targets: [one("enemy-piece", { pieces: ["q"] })] },
   { id: "sanctuary", cost: 7, type: "lasting", speed: "normal" },
   { id: "plague", cost: 7, type: "lasting", speed: "normal" },

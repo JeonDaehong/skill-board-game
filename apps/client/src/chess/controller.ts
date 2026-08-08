@@ -1,6 +1,7 @@
 import {
   fileOf,
   generateLegalMoves,
+  isInCheck,
   opposite,
   rankOf,
   type Color,
@@ -43,6 +44,7 @@ import {
   type Clock, type TimeControl,
 } from "../clock.js";
 import { cardName, modeName, pieceName, t, tPassthrough } from "../i18n.js";
+import { isMuted, playSfx, primeAudio, setMuted, type Sfx } from "../audio.js";
 
 export interface ChessOptions {
   mode: GameMode;
@@ -99,6 +101,11 @@ const COUNTER_REASON: Record<CounterTrigger, string> = {
 export interface GameViewOptions {
   /** A ladder match: the result moves the player's rank when it ends. */
   ranked?: boolean;
+  /**
+   * The opponent's account nickname. Absent for an AI game, and for a human
+   * playing signed out — both fall back to the generic "Opponent" plate.
+   */
+  opponentName?: string;
 }
 
 export function mountGame(
@@ -112,6 +119,7 @@ export function mountGame(
   const opp = opposite(me);
   const flipped = me === "b";
   const myName = getNickname();
+  const oppName = view.opponentName?.trim() || t("game.opponent");
 
   // Purely local UI state (never leaves the client). Targeting itself is not
   // here: the engine owns which card is waiting on what, and this screen only
@@ -162,6 +170,25 @@ export function mountGame(
   const mode = session.getState().mode;
   const carded = usesCards(mode);
 
+  // Sound is punctuation, and punctuation you cannot turn off is noise. The
+  // switch rides on the duel bar because the table is where you notice you want
+  // it — the same setting is on the profile screen for the rest of the app.
+  const soundToggle = el("button", { class: "duel-sound", attrs: { title: t("sound.toggle") } });
+  const paintSound = (): void => {
+    const off = isMuted();
+    soundToggle.classList.toggle("off", off);
+    soundToggle.textContent = off ? "🔇" : "🔊";
+    soundToggle.setAttribute("aria-pressed", off ? "true" : "false");
+  };
+  soundToggle.onclick = () => {
+    setMuted(!isMuted());
+    paintSound();
+    // Unmuting with no sound to show for it is indistinguishable from a dead
+    // button, so the click answers for itself.
+    if (!isMuted()) { primeAudio(); playSfx("select"); }
+  };
+  paintSound();
+
   // The plates and the commentary live in the margins beside the board, not in
   // rows above and below it: every row stacked into the column is height the
   // board does not get, and on a wide screen the margins are free.
@@ -169,6 +196,7 @@ export function mountGame(
       el("div", { class: "duel-top" }, [
         el("button", { class: "duel-exit", text: t("common.leave"), onclick: () => tryLeave() }),
         el("span", { class: "game-mode-chip", text: modeName(mode) }),
+        soundToggle,
       ]),
       oppHand,
       // The turn's steps live in the right margin rather than in a row of their
@@ -441,7 +469,7 @@ export function mountGame(
       el("div", { class: "plate-head" }, [
         icon("avatar", "plate-avatar"),
         el("div", { class: "plate-id" }, [
-          el("span", { class: "plate-name", text: mine ? myName : t("game.opponent") }),
+          el("span", { class: "plate-name", text: mine ? myName : oppName }),
           el("span", { class: "plate-side", text: who === "w" ? t("game.white") : t("game.black") }),
         ]),
         timed ? (mine ? myClock : oppClock) : null,
@@ -822,7 +850,9 @@ export function mountGame(
           controls.push(el("button", {
             class: "btn btn-ghost btn-small",
             text: `${color === me ? "▲" : "▼"} ${cardName(l.card)}`,
-            onclick: () => pick({ type: "target", index: l.id }),
+            // Its own field, not `index`: 파괴 offers a lasting card and a card
+            // in hand side by side, and a bare number cannot say which.
+            onclick: () => pick({ type: "target", lasting: l.id }),
           }));
         }
       }
@@ -883,7 +913,10 @@ export function mountGame(
     if (!meta) return t("play.counterOnly");
     if (meta.speed === "counter") return t("play.counterOnly");
     if (s.phase !== "summon" && s.phase !== "skill") return t("play.phaseSkill");
-    if (s.skillsPlayed >= 1) return t("play.oneSkill");
+    // 속공 is outside the one-card-a-turn limit; cost is the only thing that
+    // holds it back. Mirror the engine here or the rail greys out cards the
+    // engine would have accepted.
+    if (meta.speed !== "quick" && s.skillsPlayed >= 1) return t("play.oneSkill");
     void index;
     return null;
   }
@@ -901,10 +934,29 @@ export function mountGame(
     dealt: number;
     /** When the cards currently in flight will have landed. */
     busyUntil: number;
+    /**
+     * Draws the engine has reported since this rail last settled.
+     *
+     * Growth in hand size is not the same thing. 헌납 pitches a card and then
+     * draws two, so the hand goes 5 → 6 and one arrival gets animated for two
+     * cards drawn — you cannot count what you were dealt if the deal does not
+     * show all of it. The engine already says `drew` once per card, so that is
+     * what the deal is built from, and the size change is only the floor.
+     */
+    drew: number;
     retry?: number;
   }
-  const mineRail: Rail = { sig: "", dealt: 0, busyUntil: 0 };
-  const theirsRail: Rail = { sig: "", dealt: 0, busyUntil: 0 };
+  const mineRail: Rail = { sig: "", dealt: 0, busyUntil: 0, drew: 0 };
+  const theirsRail: Rail = { sig: "", dealt: 0, busyUntil: 0, drew: 0 };
+
+  /** How many cards are freshly in this hand, and where they start. */
+  function freshCount(rail: Rail, handLength: number): number {
+    const grew = Math.max(0, handLength - rail.dealt);
+    const fresh = Math.min(handLength, Math.max(grew, rail.drew));
+    rail.drew = 0;
+    rail.dealt = handLength;
+    return fresh;
+  }
 
   /** True when the caller should back off and let a deal finish first. */
   function railBusy(rail: Rail, repaint: () => void): boolean {
@@ -937,8 +989,7 @@ export function mountGame(
 
     // Cards are pushed onto the end of the hand, so anything past the count we
     // last settled is freshly drawn and gets to fly out of the deck.
-    const firstFresh = hand.length > mineRail.dealt ? mineRail.dealt : hand.length;
-    mineRail.dealt = hand.length;
+    const firstFresh = hand.length - freshCount(mineRail, hand.length);
 
     if (hand.length === 0) {
       myHand.replaceChildren(el("div", { class: "hand-empty", text: t("play.handEmpty") }));
@@ -948,7 +999,11 @@ export function mountGame(
     const slots = hand.map((cardId, i) => {
       const blocked = blocks[i];
       const node = cardEl(cardId, "sm");
-      node.classList.add("hand-card");
+      // Which step this card belongs to, so only the cards the current step is
+      // asking for light up. The summon step lets a skill card through too, but
+      // beckoning with both is beckoning with neither — the glow points at the
+      // step's own cards and the rest stay quiet without being blocked.
+      node.classList.add("hand-card", isPieceCard(cardId) ? "kind-piece" : "kind-skill");
       node.classList.toggle("playable", !blocked);
       node.classList.toggle("blocked", !!blocked);
       if (discarding) node.classList.add("pitchable");
@@ -988,8 +1043,7 @@ export function mountGame(
     if (railBusy(theirsRail, renderOppHand)) return;
     theirsRail.sig = sig;
 
-    const firstFresh = hand.length > theirsRail.dealt ? theirsRail.dealt : hand.length;
-    theirsRail.dealt = hand.length;
+    const firstFresh = hand.length - freshCount(theirsRail, hand.length);
 
     if (hand.length === 0) {
       oppHand.replaceChildren(el("div", { class: "hand-empty", text: t("play.handEmpty") }));
@@ -1031,14 +1085,21 @@ export function mountGame(
    * Fly freshly drawn cards out of that player's deck counter and into the
    * rail. The offset is measured rather than guessed: a fixed "come in from
    * below" looks like a card appearing, not like a card being drawn.
+   *
+   * The stagger is longer than the flight is short on purpose. A card that draws
+   * two (명상, 헌납) or four (도박장) used to send them all up at once with 130ms
+   * between them, so three cards read as one wide movement and the only way to
+   * learn how many you had drawn was to count the hand before and after. Each
+   * card now leaves the deck after the one before it has landed, and the deck
+   * itself counts them off — a deal you can watch is a deal you can count.
    */
   /** Must match the card-deal keyframe's duration and per-card delay in CSS. */
-  const DEAL_MS = 520;
-  const DEAL_STAGGER_MS = 130;
+  const DEAL_MS = 440;
+  const DEAL_STAGGER_MS = 300;
 
   function dealIn(fresh: HTMLElement[], zones: HTMLElement, rail: Rail): void {
     if (fresh.length === 0) return;
-    rail.busyUntil = Date.now() + DEAL_MS + DEAL_STAGGER_MS * fresh.length;
+    rail.busyUntil = Date.now() + DEAL_MS + DEAL_STAGGER_MS * (fresh.length - 1);
     requestAnimationFrame(() => {
       const deck = zones.querySelector(".zone-deck") ?? zones;
       const from = deck.getBoundingClientRect();
@@ -1052,7 +1113,27 @@ export function mountGame(
         node.classList.remove("pre-deal");
         node.classList.add("dealing");
       });
+      countOff(deck as HTMLElement, fresh.length);
     });
+  }
+
+  /**
+   * The deck ticking off the cards it is sending: 1, 2, 3… one number per card,
+   * in step with the flight. One "+3" that appears and fades says the same thing
+   * in a way you have to already be looking at the deck to catch; a count that
+   * climbs is legible from the corner of the eye.
+   */
+  function countOff(deck: HTMLElement, total: number): void {
+    if (total < 2) return;
+    for (let k = 0; k < total; k++) {
+      window.setTimeout(() => {
+        if (!deck.isConnected) return;
+        const pip = el("span", { class: "deal-count", text: `${k + 1}` });
+        deck.appendChild(pip);
+        // Must outlive the .deal-count animation and no more; see the CSS.
+        window.setTimeout(() => pip.remove(), 360);
+      }, k * DEAL_STAGGER_MS);
+    }
   }
 
   /**
@@ -1314,11 +1395,14 @@ export function mountGame(
   function handleNormalClick(sq: Square): void {
     if (state().moveSpent) return; // a card was played instead of the move
     if (selected === null) {
-      if (movable(sq)) { selected = sq; render(); }
+      if (movable(sq)) { selected = sq; playSfx("select"); render(); }
       return;
     }
     if (sq === selected) { selected = null; return render(); }
-    if (movable(sq)) { selected = sq; return render(); }
+    // Switching to another of your own pieces ends the click there. Falling
+    // through would ask whether the piece can move onto itself, which it cannot,
+    // and drop the selection that was just made.
+    if (movable(sq)) { selected = sq; playSfx("select"); return render(); }
     if (legalTargets(selected).includes(sq)) {
       void dispatchMove(selected, sq);
     } else {
@@ -1475,6 +1559,50 @@ export function mountGame(
     }, 1400);
   }
 
+  // ── sound ──────────────────────────────────────────────────
+  /**
+   * What an event sounds like. The board's own noises are not in here: a move
+   * and a capture are told apart by what the board did, not by what the engine
+   * said, because 질주 and 밀쳐내기 slide a piece without ever raising a move.
+   */
+  function eventSound(e: MatchEvent): Sfx | null {
+    switch (e.type) {
+      case "drew": return "draw";
+      case "played": return isPieceCard(e.card) ? "summon" : "play";
+      case "destroyed": return "destroy";
+      case "expired": return "expire";
+      case "dice": return "dice";
+      case "game-over":
+        return e.winner === "draw" ? "draw-game" : e.winner === me ? "win" : "lose";
+      case "toast":
+        // The one prompt that is easy to sit and stare past. It is aimed at us
+        // or it is not worth a noise.
+        return e.text === "fx.counterWindow" && myStep()?.kind === "counter" ? "counter" : null;
+      default: return null;
+    }
+  }
+
+  /**
+   * The board's half. A capture is a move that landed where something died, so
+   * the two anims have to be read together — playing both would be a click and
+   * a thud on top of each other, and playing only `slain` would make a capture
+   * sound like a card kill.
+   */
+  function boardSounds(anims: BoardAnim[]): void {
+    const deaths = new Set(anims.filter((a) => a.kind === "slain").map((a) => (a as { sq: Square }).sq));
+    let moved = false;
+    let took = false;
+    for (const a of anims) {
+      if (a.kind !== "move") continue;
+      moved = true;
+      if (deaths.has(a.to)) { took = true; deaths.delete(a.to); }
+    }
+    if (took) playSfx("capture");
+    else if (moved) playSfx("move");
+    // Whatever died without a piece arriving on top of it was killed by a card.
+    if (deaths.size > 0) playSfx("slain");
+  }
+
   // ── wire up ────────────────────────────────────────────────
   let toastTimer: number | undefined;
   function showToast(text: string): void {
@@ -1487,11 +1615,13 @@ export function mountGame(
   // A rematch deals a fresh opening hand, so the rails have to forget what they
   // were holding — otherwise the new hand slides in without ever being dealt.
   let wasEnded = false;
+  /** Whether the side to move is already in check, so it is announced once. */
+  let inCheck = false;
   session.subscribe((_s, events) => {
     const live = state().status === "playing";
     if (live && wasEnded) {
-      mineRail.dealt = 0; mineRail.sig = "";
-      theirsRail.dealt = 0; theirsRail.sig = "";
+      mineRail.dealt = 0; mineRail.sig = ""; mineRail.drew = 0;
+      theirsRail.dealt = 0; theirsRail.sig = ""; theirsRail.drew = 0;
       actionLog.replaceChildren();
       rankChange = null; // a rematch is its own ladder match
       // A rematch is a different board; nothing from the old one may fly across.
@@ -1500,14 +1630,26 @@ export function mountGame(
       lastMove = null;
     }
     wasEnded = !live;
+    const wasChecked = inCheck;
     for (const e of events) {
       if (e.type === "toast") showToast(e.text);
+      // One `drew` is one card off the deck, whatever the hand size did around
+      // it — the rails deal from this rather than from the size change.
+      if (e.type === "drew") (e.color === me ? mineRail : theirsRail).drew += 1;
       logEvent(e);
+      const sound = eventSound(e);
+      if (sound) playSfx(sound);
     }
     // Reset local targeting if the turn/pending situation changed under us.
     if (!myTurn()) { selected = null; freeMoveSource = null; }
 
     const anims = absorbBoard();
+    boardSounds(anims);
+    // Check gets its own note, and only on the turn it starts — a king that has
+    // been in check for three plies does not need telling three times. The
+    // ending's own fanfare covers checkmate, so a finished match stays quiet.
+    inCheck = state().status === "playing" && isInCheck(state().chess, state().chess.turn, state().rules);
+    if (inCheck && !wasChecked) playSfx("check");
     // Squares a card touched without anything travelling to or from them — an
     // enchant landing, terrain being laid. They have no motion of their own, so
     // the flash is the only thing that says the card did anything there.

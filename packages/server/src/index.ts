@@ -1,4 +1,8 @@
+import { createServer } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
+import { handleApi, isApiRequest } from "./api.js";
+import { accountForToken, sweepSessions } from "./db.js";
+import { hasClient, serveClient } from "./static.js";
 import {
   GAME_MODES,
   checkDeck as checkDeckRules,
@@ -13,6 +17,16 @@ import type { ClientMsg, Clocks, RoomInfo, ServerMsg, TimeControl } from "./prot
 interface Player {
   ws: WebSocket;
   deck: string[];
+  /**
+   * Answered the most recent heartbeat ping. Cleared just before each ping goes
+   * out, so a socket still false on the following round has missed a full cycle
+   * and is treated as gone.
+   */
+  alive: boolean;
+  /** Account id, once the socket has presented a valid token. */
+  accountId?: number;
+  /** The account's nickname, shown to the opponent when a match starts. */
+  nickname?: string;
   gameId?: string;
   mode?: GameMode;
   color?: Color;
@@ -79,6 +93,23 @@ const DEFAULT_TIME_CONTROL: TimeControl = { mainMs: 15 * 60_000, incrementMs: 10
 const MAX_MAIN_MS = 12 * 60 * 60_000;
 const MAX_INCREMENT_MS = 5 * 60_000;
 
+/**
+ * How often every open socket is pinged, and — because a socket gets exactly
+ * one interval to answer — how long a dead one takes to notice.
+ *
+ * A match sends nothing between moves: the clock is server-side and only rides
+ * along with `state`, so a player thinking for two minutes leaves the socket
+ * completely idle. Anything in the path is free to reclaim an idle connection
+ * (Cloudflare, a home router's NAT table, a mobile carrier), and with no
+ * traffic in either direction neither end would find out until someone finally
+ * moved into a socket that had been dead for minutes. The ping keeps the
+ * connection warm and doubles as the dead-peer check.
+ *
+ * Browsers answer a ping frame with a pong on their own, so nothing on the
+ * client has to take part in this.
+ */
+const HEARTBEAT_MS = 30_000;
+
 const rooms = new Map<string, Room>();
 const waitingRooms = new Map<string, WaitingRoom>();
 /**
@@ -93,11 +124,34 @@ const queueKey = (gameId: string, mode: GameMode, ranked: boolean): string =>
   `${gameId}:${mode}:${ranked ? "ranked" : "normal"}`;
 
 const PORT = Number(process.env.PORT ?? 8787);
-const wss = new WebSocketServer({ port: PORT });
-console.log(`[skill-server] listening on ws://localhost:${PORT}`);
+
+/**
+ * One port serves both halves of the server: the account API over HTTP and the
+ * match socket over the upgrade on the same listener. Two ports would be two
+ * firewall rules, two certificates and two URLs for the client to get wrong.
+ */
+const http = createServer((req, res) => {
+  if (isApiRequest(req)) return void handleApi(req, res);
+  if (hasClient) return serveClient(req, res);
+  res.writeHead(404, { "Content-Type": "text/plain" }).end("skill-server");
+});
+const wss = new WebSocketServer({ server: http });
+
+sweepSessions();
+http.listen(PORT, () => {
+  console.log(`[skill-server] socket ws://localhost:${PORT}  ·  api http://localhost:${PORT}/api`);
+  if (hasClient) console.log("[skill-server] serving the built client from this port too");
+});
+
+/** Every live socket, so the heartbeat has something to walk. */
+const connections = new Set<Player>();
 
 wss.on("connection", (ws) => {
-  const player: Player = { ws, deck: [] };
+  const player: Player = { ws, deck: [], alive: true };
+  connections.add(player);
+  ws.on("pong", () => {
+    player.alive = true;
+  });
   ws.on("message", (data) => {
     try {
       handle(player, JSON.parse(data.toString()) as ClientMsg);
@@ -105,8 +159,30 @@ wss.on("connection", (ws) => {
       send(ws, { type: "error", error: "malformed message" });
     }
   });
-  ws.on("close", () => onClose(player));
+  ws.on("close", () => {
+    connections.delete(player);
+    onClose(player);
+  });
 });
+
+const heartbeat = setInterval(() => {
+  for (const player of connections) {
+    // Missed a full cycle. `terminate` fires "close", which is what actually
+    // clears the queues and tells the opponent — so this needs no cleanup of
+    // its own, and a socket dying quietly ends up on the same path as one the
+    // player closed themselves.
+    if (!player.alive) {
+      player.ws.terminate();
+      continue;
+    }
+    if (!isOpen(player)) continue; // mid-close; "close" is already coming
+    player.alive = false;
+    player.ws.ping();
+  }
+}, HEARTBEAT_MS);
+/** The listener is what should hold the process open, not this timer. */
+heartbeat.unref();
+wss.on("close", () => clearInterval(heartbeat));
 
 function send(ws: WebSocket, msg: ServerMsg): void {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
@@ -114,6 +190,7 @@ function send(ws: WebSocket, msg: ServerMsg): void {
 
 function handle(player: Player, msg: ClientMsg): void {
   switch (msg.type) {
+    case "auth": return authenticate(player, msg.token);
     case "quickstart": return quickstart(player, msg.gameId, msg.mode, msg.deck, !!msg.ranked, msg.timeControl);
     case "create-room": return createRoom(player, msg);
     case "list-rooms": return listRooms(player);
@@ -122,6 +199,19 @@ function handle(player: Player, msg: ClientMsg): void {
     case "action": return act(player, msg.action);
     case "rematch": return rematch(player);
   }
+}
+
+/**
+ * Attach an account to this socket. A bad or expired token is not an error the
+ * player has to act on — it just means the socket stays anonymous, and the
+ * account API will tell the client to log in again on its next call.
+ */
+function authenticate(player: Player, token: unknown): void {
+  if (typeof token !== "string") return;
+  const account = accountForToken(token);
+  if (!account) return;
+  player.accountId = account.id;
+  player.nickname = account.nickname;
 }
 
 // ── matchmaking ──────────────────────────────────────────────
@@ -300,8 +390,8 @@ function startRoom(
     clock: null,
   };
   rooms.set(code, room);
-  send(white.ws, { type: "start", room: code, color: "w", gameId, mode, timeControl: control });
-  send(black.ws, { type: "start", room: code, color: "b", gameId, mode, timeControl: control });
+  send(white.ws, { type: "start", room: code, color: "w", gameId, mode, timeControl: control, opponent: black.nickname });
+  send(black.ws, { type: "start", room: code, color: "b", gameId, mode, timeControl: control, opponent: white.nickname });
   armClock(room, control);
   broadcast(room, []);
 }

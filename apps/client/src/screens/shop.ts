@@ -10,6 +10,7 @@ import {
 import { BOARD_THEMES, PIECE_SKINS, grantSkin, ownsSkin, skinPrice } from "../skins.js";
 import { profileScreen } from "./profile.js";
 import { cardName, shopDesc, shopItem, t } from "../i18n.js";
+import { playSfx } from "../audio.js";
 
 /**
  * Shop. Piece cards and skill-card packs both transact for real: coins come out
@@ -61,6 +62,9 @@ export const shopScreen: Screen = (ctx: AppContext) => {
 
   let noticeTimer: number | undefined;
   function flash(text: string, kind: "ok" | "bad"): void {
+    // Every purchase and every refusal in this screen already funnels through
+    // here, so it is the one place the sound has to be wired.
+    playSfx(kind === "ok" ? "buy" : "denied");
     notice.textContent = text;
     notice.className = `shop-notice ${kind}`;
     if (noticeTimer) clearTimeout(noticeTimer);
@@ -210,6 +214,7 @@ export const shopScreen: Screen = (ctx: AppContext) => {
       ]),
     );
     overlay.classList.remove("hidden");
+    playSfx("pack");
 
     drawn.forEach((id, i) => {
       window.setTimeout(() => {
@@ -219,6 +224,9 @@ export const shopScreen: Screen = (ctx: AppContext) => {
         card.title = cardName(id);
         row.appendChild(card);
         fitNames(row);
+        // One per card, in step with the reveal — the whole appeal of a pack is
+        // the order they come out in, and that is as much heard as seen.
+        playSfx("draw");
       }, i * 180);
     });
   }
