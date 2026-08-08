@@ -17,7 +17,16 @@ import { aiCardAction } from "./ai-cards.js";
  * local AI game (in-process `reduce`) or an online match (server round-trip).
  */
 /** Out-of-band events that only a remote (server) session produces. */
-export type SessionNotice = "rematch-waiting" | "opponent-left";
+/**
+ * `refused` carries the engine's reason for turning an action down. Both
+ * sessions used to drop that on the floor — the local one to `console.warn`,
+ * the remote one by not handling the server's `error` message at all — so a
+ * refused click looked exactly like a frozen board.
+ */
+export type SessionNotice =
+  | "rematch-waiting"
+  | "opponent-left"
+  | { kind: "refused"; reason: string };
 
 export interface Session {
   readonly myColor: Color;
@@ -33,6 +42,8 @@ export interface Session {
   subscribe(cb: (state: MatchState, events: MatchEvent[]) => void): void;
   /** Notices that aren't state changes (rematch pending, opponent quit). */
   onNotice(cb: (notice: SessionNotice) => void): void;
+  /** How many people are watching this room. Always 0 for a local game. */
+  spectators(): number;
   dispatch(action: Action): void;
   /** Ask to play again with the same decks. Local restarts at once; remote
    *  needs the opponent to agree, then a fresh state arrives over the socket. */
@@ -67,14 +78,21 @@ export function createLocalSession(cfg: LocalConfig): Session {
   // The search runs on its own thread; on the main one it froze the clocks and
   // every repaint until the AI was done thinking.
   const ai = createAiRunner();
-  // Local play has no opponent to negotiate with, so notices never fire.
+  // Local play has no opponent to negotiate with, so the only notice that fires
+  // is a refusal.
+  let noticer: ((n: SessionNotice) => void) | null = null;
+  /** Why the last `apply` said no. Only the human's own dispatch reports it —
+   *  `unstick` refuses actions on purpose and must stay quiet. */
+  let lastRefusal: string | null = null;
 
   function apply(action: Action): boolean {
     const res = reduce(state, action, Math.random);
     if (!res.ok) {
+      lastRefusal = res.error;
       console.warn("[local] rejected action", action.type, res.error);
       return false;
     }
+    lastRefusal = null;
     state = res.state;
     listener?.(state, res.events);
     scheduleAi();
@@ -167,11 +185,16 @@ export function createLocalSession(cfg: LocalConfig): Session {
     ownsClock: true,
     getState: () => state,
     clocks: () => null,
+    spectators: () => 0, // nobody can watch a game against the machine
     subscribe: (cb) => {
       listener = cb;
     },
-    onNotice: () => {},
-    dispatch: (action) => void apply(action),
+    onNotice: (cb) => {
+      noticer = cb;
+    },
+    dispatch: (action) => {
+      if (!apply(action)) noticer?.({ kind: "refused", reason: lastRefusal ?? "" });
+    },
     rematch: () => {
       if (disposed) return;
       if (timer) clearTimeout(timer);
@@ -191,6 +214,7 @@ export function createLocalSession(cfg: LocalConfig): Session {
 export function createRemoteSession(ws: WebSocket, myColor: Color, initial: MatchState): Session {
   let state = initial;
   let clocks: { w: number; b: number } | null = null;
+  let watching = 0;
   let listener: ((s: MatchState, e: MatchEvent[]) => void) | null = null;
   let noticer: ((n: SessionNotice) => void) | null = null;
 
@@ -199,11 +223,16 @@ export function createRemoteSession(ws: WebSocket, myColor: Color, initial: Matc
     if (msg.type === "state") {
       state = msg.state as MatchState;
       if (msg.clocks) clocks = msg.clocks as { w: number; b: number };
+      if (typeof msg.spectators === "number") watching = msg.spectators;
       listener?.(state, msg.events as MatchEvent[]);
     } else if (msg.type === "rematch-waiting") {
       noticer?.("rematch-waiting");
     } else if (msg.type === "opponent-left") {
       noticer?.("opponent-left");
+    } else if (msg.type === "error") {
+      // The server turned the action down. Dropping this was why a refused
+      // click online looked like the board had stopped responding.
+      noticer?.({ kind: "refused", reason: String(msg.error ?? "") });
     }
   };
 
@@ -212,6 +241,7 @@ export function createRemoteSession(ws: WebSocket, myColor: Color, initial: Matc
     ownsClock: false,
     getState: () => state,
     clocks: () => clocks,
+    spectators: () => watching,
     subscribe: (cb) => {
       listener = cb;
     },

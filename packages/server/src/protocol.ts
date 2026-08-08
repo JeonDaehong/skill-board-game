@@ -12,6 +12,14 @@ export interface RoomInfo {
   locked: boolean;
   /** How many players are currently in the room (0–2). */
   players: number;
+  /**
+   * The match has already begun, so the only way in is to watch. Rooms in this
+   * state are still listed — a room you cannot sit down at is exactly the room
+   * you might want to watch.
+   */
+  live: boolean;
+  /** Watchers already in, out of `MAX_SPECTATORS`. */
+  spectators: number;
 }
 
 /** Main clocks, in ms remaining. The server owns these; clients only display
@@ -57,6 +65,13 @@ export type ClientMsg =
    * rather than spending a round trip asking what the room is playing.
    */
   | { type: "join-room"; code: string; password?: string; decks: Partial<Record<GameMode, string[]>> }
+  /**
+   * Watch a match instead of playing in it. No deck rides along: a watcher
+   * never acts, so there is nothing to check. Only rooms someone created by
+   * hand can be watched — a quick match pairs strangers who did not agree to
+   * an audience, and there is no lobby for them to have agreed in.
+   */
+  | { type: "spectate"; code: string; password?: string }
   | { type: "cancel" }
   // In-match (action shape is game-specific; the room's engine interprets it)
   | { type: "action"; action: unknown }
@@ -77,6 +92,13 @@ export type ServerMsg =
       timeControl: TimeControl;
       /** The opponent's account nickname; absent if they are playing signed out. */
       opponent?: string;
+      /**
+       * This socket is watching, not playing. `color` still says which way up
+       * the board arrives, but nothing this client sends will be accepted.
+       */
+      spectator?: boolean;
+      /** Both seats by name, for a watcher who is neither of them. */
+      players?: { w?: string; b?: string };
     }
   | {
       type: "state";
@@ -88,6 +110,8 @@ export type ServerMsg =
       winner: MatchState["winner"];
       /** Omitted for untimed rooms. */
       clocks?: Clocks;
+      /** How many people are watching, so the players can see they have one. */
+      spectators?: number;
     }
   | { type: "error"; error: string }
   /** This viewer asked for a rematch; still waiting on the opponent to agree. */

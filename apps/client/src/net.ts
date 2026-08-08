@@ -82,6 +82,9 @@ export function driveMatchmaking(
   let gameId = "chess";
   /** The opponent's account name, when they are playing signed in. */
   let opponentName: string | undefined;
+  /** Watching rather than playing: the server said so on `start`. */
+  let spectator = false;
+  let seatNames: { w?: string; b?: string } | undefined;
   // The room's clock is the server's to set — the host picked it, and for a
   // quick match whoever was queued first did. Mirror whatever it announces.
   let control: TimeControl = timeControlById(getTimeControlId());
@@ -116,6 +119,8 @@ export function driveMatchmaking(
         myColor = msg.color;
         gameId = msg.gameId ?? "chess";
         opponentName = typeof msg.opponent === "string" ? msg.opponent : undefined;
+        spectator = msg.spectator === true;
+        seatNames = spectator ? (msg.players as { w?: string; b?: string } | undefined) : undefined;
         if (msg.timeControl) control = fromWire(msg.timeControl);
         break;
       case "state":
@@ -125,8 +130,12 @@ export function driveMatchmaking(
           if (gameId === "chess") {
             const session = createRemoteSession(ws, myColor, msg.state as MatchState);
             gameCleanup = mountGame(ctx, session, () => ctx.navigate(menuScreen), control, {
-              ranked,
+              // A watched match is never the watcher's ladder game, whatever
+              // the two people playing it are doing.
+              ranked: ranked && !spectator,
               opponentName,
+              spectator,
+              players: seatNames,
             });
           } else {
             const view = getView(gameId, myColor as Player);

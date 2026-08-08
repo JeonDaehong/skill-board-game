@@ -15,6 +15,7 @@ import {
   modeRules,
   needsTargets,
   skillMeta,
+  targetOptions,
   summonZone,
   usesCards,
   type Action,
@@ -72,6 +73,8 @@ export function makeChess(opts: ChessOptions): Screen {
 
 /** How long the final position stays visible before the result card covers it. */
 const GAME_OVER_DELAY_MS = 1100;
+/** How long the opponent may sit in a counter window before we say so. */
+const THEIR_COUNTER_DELAY_MS = 400;
 
 const COUNTER_REASON: Record<CounterTrigger, string> = {
   move: "counter.trigMove",
@@ -106,6 +109,14 @@ export interface GameViewOptions {
    * playing signed out — both fall back to the generic "Opponent" plate.
    */
   opponentName?: string;
+  /**
+   * Watching someone else's match. No step is ever ours, no click reaches the
+   * board, and both nameplates belong to other people. The session's colour is
+   * only which way up the board arrives.
+   */
+  spectator?: boolean;
+  /** Both seats by name, when watching. */
+  players?: { w?: string; b?: string };
 }
 
 export function mountGame(
@@ -118,8 +129,15 @@ export function mountGame(
   const me = session.myColor;
   const opp = opposite(me);
   const flipped = me === "b";
-  const myName = getNickname();
-  const oppName = view.opponentName?.trim() || t("game.opponent");
+  const spectating = !!view.spectator;
+  // Watching, the two plates are both other people: `me` is only the side the
+  // board is drawn from, which for a watcher is always white.
+  const myName = spectating
+    ? view.players?.w?.trim() || t("game.seatWhite")
+    : getNickname();
+  const oppName = spectating
+    ? view.players?.b?.trim() || t("game.seatBlack")
+    : view.opponentName?.trim() || t("game.opponent");
 
   // Purely local UI state (never leaves the client). Targeting itself is not
   // here: the engine owns which card is waiting on what, and this screen only
@@ -133,11 +151,28 @@ export function mountGame(
   // The overlay covers the board, so it waits a beat — otherwise the mating move
   // is hidden behind the result card the instant it is played.
   let overlayTimer: number | undefined;
+  /**
+   * The opponent is sitting in a counter window and we are the one waiting.
+   *
+   * It goes up on a delay rather than immediately: the local AI answers a
+   * window in about two hundred milliseconds, and a banner that appears and
+   * vanishes inside a blink is worse than none. Past the delay the wait is long
+   * enough that the silence needs explaining — which is the whole complaint,
+   * that a thinking opponent was indistinguishable from a hung game.
+   */
+  let theirCounterTimer: number | undefined;
+  let theirCounterUp = false;
 
   const canvas = el("canvas", { class: "board-canvas" }) as HTMLCanvasElement;
   canvas.width = 640;
   canvas.height = 640;
   const overlay = el("div", { class: "game-overlay hidden" });
+  /**
+   * Says "watching" to a watcher and "2 watching" to the players. Both halves
+   * matter: the watcher needs to know why nothing they click does anything, and
+   * the players are entitled to know there is an audience.
+   */
+  const watchChip = el("span", { class: "watch-chip hidden" });
   const oppPlate = el("div", { class: "seat-plate opp" });
   const myPlate = el("div", { class: "seat-plate me" });
   // Deck, graveyard and the cards left standing on the field — the three piles
@@ -196,6 +231,7 @@ export function mountGame(
       el("div", { class: "duel-top" }, [
         el("button", { class: "duel-exit", text: t("common.leave"), onclick: () => tryLeave() }),
         el("span", { class: "game-mode-chip", text: modeName(mode) }),
+        watchChip,
         soundToggle,
       ]),
       oppHand,
@@ -317,12 +353,25 @@ export function mountGame(
     return s.pending ? s.pending.color : s.chess.turn;
   }
   function myTurn(): boolean {
+    // A watcher never has the turn, whatever colour the board is drawn from.
+    // Every control on this screen hangs off this and `myStep`, so the two of
+    // them going quiet is what makes the whole view read-only.
+    if (spectating) return false;
     return state().status === "playing" && actor() === me;
   }
   /** A step is waiting on us specifically — a draw choice, a counter, a drop. */
   function myStep(): MatchState["pending"] | null {
+    if (spectating) return null;
     const p = state().pending;
     return p && p.color === me ? p : null;
+  }
+
+  function renderWatchChip(): void {
+    const n = session.spectators();
+    const text = spectating ? t("game.watching") : n > 0 ? t("game.watchers").replace("{n}", String(n)) : "";
+    watchChip.classList.toggle("hidden", !text);
+    watchChip.classList.toggle("is-watcher", spectating);
+    if (text && watchChip.textContent !== text) watchChip.textContent = text;
   }
 
   // ── rendering ──────────────────────────────────────────────
@@ -358,6 +407,7 @@ export function mountGame(
     renderStepPanel();
     renderHand();
     renderOppHand();
+    renderWatchChip();
 
     if (s.status === "ended") { clock.stop(); renderClocks(); scheduleGameOver(); return; }
     if (overlayTimer) { clearTimeout(overlayTimer); overlayTimer = undefined; }
@@ -384,11 +434,15 @@ export function mountGame(
       if (e.on.kind === "player") continue;
       // A buried mine belongs to whoever laid it; the other side gets no hint.
       if (e.card === "mine" && e.owner !== me) continue;
+      // Tone is "is this good for me", which the owner already answers in all
+      // four combinations: my buff on my piece and my curse on theirs are both
+      // green, their buff and their curse are both red.
       out.push({
         sq: e.on.sq,
         glyph: skillIcon(e.card),
         token: cardToken(e.card),
         tone: e.owner === me ? "good" : "bad",
+        turns: e.turnsLeft,
       });
     }
     for (const color of [me, opp] as Color[]) {
@@ -399,6 +453,7 @@ export function mountGame(
           glyph: skillIcon(l.card),
           token: cardToken(l.card),
           tone: color === me ? "good" : "bad",
+          turns: l.turnsLeft,
         });
       }
     }
@@ -552,7 +607,13 @@ export function mountGame(
         : el("div", { class: "zone-field-cards" },
             p.lasting.map((l) => {
               const card = cardEl(l.card, "xs");
-              card.classList.add("field-card");
+              card.classList.add("field-card", mine ? "field-mine" : "field-theirs");
+              // Turns left, where the card is on a clock. Without it a lasting
+              // card is a thing that is happening with no end in sight, and
+              // "for one more turn" is a different position to play.
+              if (typeof l.turnsLeft === "number") {
+                card.appendChild(el("span", { class: "field-turns", text: String(l.turnsLeft) }));
+              }
               card.onclick = () => openCardZoom({ card: l.card });
               return card;
             }),
@@ -666,6 +727,33 @@ export function mountGame(
     stepPanel.classList.add("hidden");
     stepModal.replaceChildren();
     stepModal.classList.add("hidden");
+
+    // Their counter window. Nothing on this screen moves while it is open, so
+    // without a word here the board just stops.
+    const theirs = state().pending;
+    const theirCounter =
+      !pending &&
+      theirs?.kind === "counter" &&
+      // Watching, every counter window belongs to somebody else.
+      (spectating || theirs.color !== me) &&
+      state().status === "playing";
+    if (!theirCounter) {
+      if (theirCounterTimer !== undefined) clearTimeout(theirCounterTimer);
+      theirCounterTimer = undefined;
+      theirCounterUp = false;
+    } else if (theirCounterUp) {
+      const body = spectating
+        ? t("counter.waitingWatch").replace("{name}", theirs.color === me ? myName : oppName)
+        : t("counter.waiting");
+      return fill("centre", t("counter.waitTitle"), body, [], "waiting");
+    } else if (theirCounterTimer === undefined) {
+      theirCounterTimer = window.setTimeout(() => {
+        theirCounterTimer = undefined;
+        theirCounterUp = true;
+        renderStepPanel();
+      }, THEIR_COUNTER_DELAY_MS);
+    }
+
     if (!pending) return;
 
     if (pending.kind === "targeting") return renderTargetPanel(pending);
@@ -981,8 +1069,10 @@ export function mountGame(
     const discarding = pending?.kind === "discard";
     const casting = pending?.kind === "targeting" ? pending.card : "";
 
-    const blocks = hand.map((id, i) => blockedReason(id, i) ?? "");
-    const sig = `${hand.join(",")}|${blocks.join(",")}|${discarding}|${casting}`;
+    // Watching: this rail is a player's hand, it arrived masked, and none of it
+    // is ours to weigh up — so nothing on it is "blocked", it is just not ours.
+    const blocks = spectating ? hand.map(() => "") : hand.map((id, i) => blockedReason(id, i) ?? "");
+    const sig = `${spectating ? "watch|" : ""}${hand.join(",")}|${blocks.join(",")}|${discarding}|${casting}`;
     if (sig === mineRail.sig) return;
     if (railBusy(mineRail, renderHand)) return;
     mineRail.sig = sig;
@@ -998,7 +1088,7 @@ export function mountGame(
 
     const slots = hand.map((cardId, i) => {
       const blocked = blocks[i];
-      const node = cardEl(cardId, "sm");
+      const node = spectating ? cardBackEl("sm") : cardEl(cardId, "sm");
       // Which step this card belongs to, so only the cards the current step is
       // asking for light up. The summon step lets a skill card through too, but
       // beckoning with both is beckoning with neither — the glow points at the
@@ -1009,7 +1099,7 @@ export function mountGame(
       if (discarding) node.classList.add("pitchable");
       if (casting === cardId) node.classList.add("casting");
       if (blocked) node.appendChild(el("span", { class: "card-block", text: blocked }));
-      node.onclick = () => onHandClick(cardId, i);
+      if (!spectating) node.onclick = () => onHandClick(cardId, i);
       if (i >= firstFresh) node.classList.add("pre-deal");
 
       const slot = el("div", { class: "hand-slot" }, [node]);
@@ -1189,7 +1279,8 @@ export function mountGame(
    */
   let rankChange: RankChange | null = null;
   function recordRankOnce(): void {
-    if (!view.ranked || rankChange) return;
+    // Watching a ladder game must never move the watcher's own rating.
+    if (spectating || !view.ranked || rankChange) return;
     const s = state();
     if (s.status !== "ended") return;
     rankChange = recordRanked(s.winner === "draw" ? "draw" : s.winner === me ? "win" : "loss");
@@ -1216,15 +1307,21 @@ export function mountGame(
   function showGameOver(): void {
     const s = state();
     recordRankOnce();
+    // Watching, neither result is ours to win: the card names the winner
+    // rather than congratulating or consoling the person reading it.
     const msg =
       s.winner === "draw" ? t("game.draw")
+      : spectating ? t("game.watchWon").replace("{name}", s.winner === me ? myName : oppName)
       : s.winner === me ? t("game.victory")
       : t("game.defeat");
     // Why it ended — checkmate, stalemate, resignation… — so a loss is legible.
     const why = s.endReason ? tPassthrough(s.endReason) : "";
 
     const actions: HTMLElement[] = [];
-    if (opponentLeft) {
+    if (spectating) {
+      // A rematch is the players' to agree on; a watcher only gets the door.
+      actions.push(el("div", { class: "overlay-note", text: t("game.watchEnded") }));
+    } else if (opponentLeft) {
       actions.push(el("div", { class: "overlay-note", text: t("game.oppLeft") }));
     } else if (rematchPending) {
       actions.push(el("button", { class: "start-btn waiting", text: t("game.waitingOpp") }));
@@ -1257,7 +1354,8 @@ export function mountGame(
    * the button just leaves.
    */
   function tryLeave(): void {
-    if (state().status === "ended" || opponentLeft) return onExit();
+    // A watcher has nothing to forfeit, so the door is just a door.
+    if (spectating || state().status === "ended" || opponentLeft) return onExit();
 
     overlay.replaceChildren(
       el("div", { class: "overlay-card leave-card" }, [
@@ -1322,30 +1420,14 @@ export function mountGame(
       .map((x) => x.sq);
   }
 
-  /** Every square this step would accept — the board's own list of options. */
-  function targetSquares(p: Targeting): Square[] {
-    const spec = currentSpec(p);
-    if (!spec) return [];
-    const wantsSquare = spec.kinds.some(
-      (k: string) => k === "own-piece" || k === "enemy-piece" || k === "empty",
-    );
-    if (!wantsSquare) return [];
-    const s = state();
-    const already = new Set(pickedSquares(p));
-    const out: Square[] = [];
-    for (let sq = 0; sq < s.chess.board.length; sq++) {
-      if (already.has(sq)) continue;
-      const piece = s.chess.board[sq];
-      if (!piece) {
-        if (spec.kinds.includes("empty")) out.push(sq);
-        continue;
-      }
-      if (piece.type === "k" && !spec.king) continue;
-      if (spec.pieces && !spec.pieces.includes(piece.type)) continue;
-      if (spec.kinds.includes("own-piece") && piece.color === me) out.push(sq);
-      else if (spec.kinds.includes("enemy-piece") && piece.color !== me) out.push(sq);
-    }
-    return out;
+  /**
+   * Every square this step would accept — asked of the engine rather than
+   * worked out here. The board lights up exactly what the reducer will take, so
+   * a highlighted square can never come back refused: 끌어당기기 offers only the
+   * enemies actually on a line from the piece you picked, with room to land.
+   */
+  function targetSquares(_p: Targeting): Square[] {
+    return targetOptions(state());
   }
 
   function targetPrompt(p: Targeting): string {
@@ -1666,6 +1748,14 @@ export function mountGame(
   });
 
   session.onNotice((notice) => {
+    if (typeof notice === "object" && notice.kind === "refused") {
+      // The engine's reasons are developer English, so the player gets one
+      // localized line; the specific reason goes to the console. What matters
+      // here is that a refused click says something instead of nothing.
+      if (notice.reason) console.warn("[match] refused:", notice.reason);
+      showToast(t("play.refused"));
+      return;
+    }
     if (notice === "rematch-waiting") {
       rematchPending = true;
       if (gameOverUp) showGameOver();
@@ -1717,6 +1807,7 @@ export function mountGame(
     boardResize.disconnect();
     renderer.stop();
     if (overlayTimer) clearTimeout(overlayTimer);
+    if (theirCounterTimer !== undefined) clearTimeout(theirCounterTimer);
     if (bannerTimer) clearTimeout(bannerTimer);
     if (toastTimer) clearTimeout(toastTimer);
     if (mineRail.retry) clearTimeout(mineRail.retry);

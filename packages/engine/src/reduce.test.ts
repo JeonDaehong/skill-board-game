@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MASTER_DIMS, algebraicToSquare, parseFen } from "@skill/chess-core";
 import { createMatch, deriveRules } from "./match.js";
-import { reduce } from "./reduce.js";
+import { reduce, targetOptions } from "./reduce.js";
 import { pieceCardId } from "./cards.js";
 import type { GameMode } from "./modes.js";
 import type { LastingCard, MatchState } from "./types.js";
@@ -440,6 +440,53 @@ describe("board effects", () => {
     const s = play(m, at(sq("d2")), at(sq("d3")));
     expect(s.chess.board[sq("d3")]?.type).toBe("p");
     expect(s.moveSpent).toBe(false); // 속공 keeps the move
+  });
+
+  it("질주 refuses a square that is not adjacent", () => {
+    const m = posed({ hand: ["dash"], fen: "4k3/8/8/8/8/8/3P4/4K3 w - - 0 1" });
+    const s = expectOk(reduce(m, { type: "play-skill", index: 0 }));
+    const s2 = expectOk(reduce(s, { type: "target", sq: sq("d2") }));
+    expect(expectFail(reduce(s2, { type: "target", sq: sq("d5") }))).toMatch(/one square only/);
+  });
+
+  // What the board lights up comes from `targetOptions`, so a square it offers
+  // and the reducer then refuses is the bug the player sees as "I used the card
+  // and nothing happened".
+  describe("targetOptions offers only what the reducer takes", () => {
+    const cases: [string, string, string, string[]][] = [
+      // 질주: the ring around the piece, minus e1 where our own king stands —
+      // and emphatically not all forty-odd empty squares on the board.
+      ["dash", "4k3/8/8/8/8/8/3P4/4K3 w - - 0 1", "d2", ["c1", "d1", "c2", "e2", "c3", "d3", "e3"]],
+      // 밀쳐내기: the adjacent enemy, and only if there is room behind them.
+      ["shove", "4k3/8/8/8/8/8/3Pp3/K7 w - - 0 1", "d2", ["e2"]],
+      // 끌어당기기: on a line from the piece, with somewhere to land in front.
+      ["pull", "4k3/8/8/8/8/8/R5r1/4K3 w - - 0 1", "a2", ["g2"]],
+    ];
+
+    it.each(cases)("%s", (card, fen, anchor, expected) => {
+      const m = posed({ hand: [card], fen });
+      const s = expectOk(reduce(m, { type: "play-skill", index: 0 }));
+      const s2 = expectOk(reduce(s, { type: "target", sq: sq(anchor) }));
+
+      const byValue = (a: number, b: number): number => a - b;
+      const offered = targetOptions(s2);
+      // `sq` takes an optional second argument, so it cannot be passed straight
+      // to `map` — the index would arrive as the board dimensions.
+      expect([...offered].sort(byValue)).toEqual(expected.map((alg) => sq(alg)).sort(byValue));
+
+      // And the offer is honest in both directions: everything on the list is
+      // accepted, everything off it is refused.
+      for (let square = 0; square < s2.chess.board.length; square++) {
+        expect(reduce(s2, { type: "target", sq: square }).ok).toBe(offered.includes(square));
+      }
+    });
+
+    it("is empty for a step that is answered off the board", () => {
+      // 헌납 picks a card in hand, so no square should ever light up for it.
+      const m = posed({ hand: ["offering", "dash", "spy"] });
+      const s = expectOk(reduce(m, { type: "play-skill", index: 0 }));
+      expect(targetOptions(s)).toEqual([]);
+    });
   });
 
   it("전환 swaps two of your own pieces", () => {

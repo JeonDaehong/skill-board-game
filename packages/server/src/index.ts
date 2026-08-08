@@ -36,6 +36,13 @@ interface Player {
   roomId?: string;
   /** Code of the not-yet-started room this player is hosting, if any. */
   hosting?: string;
+  /**
+   * Code of the room this socket is *watching*. Deliberately not `roomId`:
+   * that field means "is one of the two people playing", and the close path
+   * tears the whole room down when it is set. A watcher leaving must not end
+   * anyone's game.
+   */
+  watching?: string;
 }
 
 /** A created room waiting for a second player. */
@@ -76,6 +83,16 @@ interface Room {
   rematch: { w: boolean; b: boolean };
   /** null for an untimed room. */
   clock: RoomClock | null;
+  /** Watchers, oldest first. Never more than `MAX_SPECTATORS`. */
+  spectators: Player[];
+  /**
+   * Whether anyone may watch this at all. Only rooms someone created by hand
+   * are open to it: a quick match puts two strangers together who never agreed
+   * to an audience, and neither of them can see who walked in.
+   */
+  spectatable: boolean;
+  /** The host's password, still enforced for watchers on a locked room. */
+  password?: string;
 }
 
 /**
@@ -86,6 +103,16 @@ interface Room {
  * engine-adapter.ts, so that is the only change this file needs.
  */
 const RELEASED_GAMES = new Set(["chess"]);
+
+/**
+ * How many people may watch one room.
+ *
+ * The cap is not about server load — three more sockets is nothing. It is that
+ * every watcher is another copy of the position going out on every action, and
+ * a room with an audience of strangers is a different thing from a room two
+ * friends opened.
+ */
+const MAX_SPECTATORS = 3;
 
 /** Used when a client asks for no particular clock: FIDE rapid, 15+10. */
 const DEFAULT_TIME_CONTROL: TimeControl = { mainMs: 15 * 60_000, incrementMs: 10_000 };
@@ -195,6 +222,7 @@ function handle(player: Player, msg: ClientMsg): void {
     case "create-room": return createRoom(player, msg);
     case "list-rooms": return listRooms(player);
     case "join-room": return joinRoom(player, msg);
+    case "spectate": return spectate(player, msg);
     case "cancel": return cancel(player);
     case "action": return act(player, msg.action);
     case "rematch": return rematch(player);
@@ -327,6 +355,25 @@ function listRooms(player: Player): void {
       mode: wr.mode,
       locked: !!wr.password,
       players: 1,
+      live: false,
+      spectators: 0,
+    });
+  }
+  // Matches already under way, so there is something to watch. Quick matches
+  // are not watchable and so are not listed — they would only ever be a row
+  // with a disabled button on it.
+  for (const room of rooms.values()) {
+    if (!room.spectatable || room.engine.isEnded()) continue;
+    room.spectators = room.spectators.filter(isOpen);
+    list.push({
+      code: room.code,
+      title: room.title,
+      gameId: room.gameId,
+      mode: room.mode,
+      locked: !!room.password,
+      players: 2,
+      live: true,
+      spectators: room.spectators.length,
     });
   }
   send(player.ws, { type: "room-list", rooms: list });
@@ -354,7 +401,60 @@ function joinRoom(
   player.deck = deck;
   player.gameId = wr.gameId;
   player.mode = wr.mode;
-  startRoom(wr.code, wr.host, player, wr.gameId, wr.mode, wr.title, wr.timeControl);
+  startRoom(wr.code, wr.host, player, wr.gameId, wr.mode, wr.title, wr.timeControl, {
+    spectatable: true,
+    password: wr.password,
+  });
+}
+
+/**
+ * Take a seat in the stands.
+ *
+ * Everything a joiner is refused for, a watcher is refused for too — wrong
+ * code, wrong password — plus two of its own: the room has to be one somebody
+ * created by hand, and the stands have to have room.
+ */
+function spectate(player: Player, msg: { code: string; password?: string }): void {
+  const code = msg.code?.trim().toLowerCase() ?? "";
+  const room = rooms.get(code);
+  // A room that exists but has not started yet is a room to *join*, and saying
+  // so is more use than "not found" when the code is right.
+  if (!room) {
+    const reason = waitingRooms.has(code) ? "That match has not started yet" : "Room not found";
+    return send(player.ws, { type: "join-failed", reason });
+  }
+  if (!room.spectatable) {
+    return send(player.ws, { type: "join-failed", reason: "This match cannot be watched" });
+  }
+  if (room.password && room.password !== (msg.password ?? "").trim()) {
+    return send(player.ws, { type: "join-failed", reason: "Wrong password" });
+  }
+  // Drop any watcher whose socket died without a close, so a room does not
+  // stay full of ghosts.
+  room.spectators = room.spectators.filter(isOpen);
+  if (room.spectators.length >= MAX_SPECTATORS) {
+    return send(player.ws, { type: "join-failed", reason: "That match already has three watchers" });
+  }
+
+  room.spectators.push(player);
+  player.watching = room.code;
+  send(player.ws, {
+    type: "start",
+    room: room.code,
+    // Watchers see the board from white's side; there is no seat of their own.
+    color: "w",
+    gameId: room.gameId,
+    mode: room.mode,
+    timeControl: room.clock?.control ?? DEFAULT_TIME_CONTROL,
+    spectator: true,
+    players: { w: room.conns.w.nickname, b: room.conns.b.nickname },
+  });
+  // Send the position straight away rather than making them wait for whatever
+  // the players do next — a watcher who joins mid-think would otherwise sit in
+  // front of an empty screen.
+  sendSpectatorState(room, player, []);
+  // The players get a fresh count so they can see someone walked in.
+  broadcast(room, []);
 }
 
 function cancel(player: Player): void {
@@ -373,6 +473,8 @@ function startRoom(
   mode: GameMode,
   title: string,
   control: TimeControl,
+  /** Watchability travels with the room, and only a hand-made room has it. */
+  open: { spectatable: boolean; password?: string } = { spectatable: false },
 ): void {
   white.color = "w";
   black.color = "b";
@@ -388,6 +490,9 @@ function startRoom(
     conns: { w: white, b: black },
     rematch: { w: false, b: false },
     clock: null,
+    spectators: [],
+    spectatable: open.spectatable,
+    password: open.password,
   };
   rooms.set(code, room);
   send(white.ws, { type: "start", room: code, color: "w", gameId, mode, timeControl: control, opponent: black.nickname });
@@ -466,6 +571,10 @@ function turnClockOver(room: Room): void {
 // ── in-match ─────────────────────────────────────────────────
 
 function act(player: Player, action: unknown): void {
+  // A watcher has no seat and no colour, so this would fall out of the check
+  // below anyway — but "not in a match" is a confusing thing to tell someone
+  // who is very much looking at one.
+  if (player.watching) return send(player.ws, { type: "error", error: "watching, not playing" });
   const room = player.roomId ? rooms.get(player.roomId) : undefined;
   if (!room || !player.color) return send(player.ws, { type: "error", error: "not in a match" });
   if (player.color !== room.engine.turn()) return send(player.ws, { type: "error", error: "not your turn" });
@@ -500,6 +609,8 @@ function broadcast(room: Room, events: MatchEvent[]): void {
   // Settle first so the numbers on the wire are current as of this message.
   if (room.clock && !room.engine.isEnded()) settleClock(room.clock);
   const clocks = room.clock ? { ...room.clock.left } : undefined;
+  room.spectators = room.spectators.filter(isOpen);
+  const watching = room.spectators.length;
   for (const color of ["w", "b"] as Color[]) {
     send(room.conns[color].ws, {
       type: "state",
@@ -509,16 +620,67 @@ function broadcast(room: Room, events: MatchEvent[]): void {
       status,
       winner,
       clocks,
+      spectators: watching,
+    });
+  }
+  // One filtered state serves every watcher: they are all entitled to exactly
+  // the same thing, which is neither player's hidden half.
+  if (watching === 0) return;
+  const view = room.engine.spectatorView();
+  for (const watcher of room.spectators) {
+    send(watcher.ws, {
+      type: "state",
+      state: view,
+      events,
+      turn,
+      status,
+      winner,
+      clocks,
+      spectators: watching,
     });
   }
 }
 
+/** The opening position for one watcher who has just walked in. */
+function sendSpectatorState(room: Room, watcher: Player, events: MatchEvent[]): void {
+  if (room.clock && !room.engine.isEnded()) settleClock(room.clock);
+  send(watcher.ws, {
+    type: "state",
+    state: room.engine.spectatorView(),
+    events,
+    turn: room.engine.turn(),
+    status: room.engine.isEnded() ? "ended" : "playing",
+    winner: room.engine.winner(),
+    clocks: room.clock ? { ...room.clock.left } : undefined,
+    spectators: room.spectators.length,
+  });
+}
+
 function onClose(player: Player): void {
   cancel(player); // drop from queues / delete hosted room
+
+  // A watcher leaving is not an event in the match. Take them out of the stands
+  // and tell the players the count moved; do not go near the teardown below.
+  if (player.watching) {
+    const watched = rooms.get(player.watching);
+    player.watching = undefined;
+    if (watched) {
+      watched.spectators = watched.spectators.filter((p) => p !== player && isOpen(p));
+      broadcast(watched, []);
+    }
+    return;
+  }
+
   const room = player.roomId ? rooms.get(player.roomId) : undefined;
   if (room) {
     const other = player.color === "w" ? room.conns.b : room.conns.w;
     send(other.ws, { type: "opponent-left" });
+    // The room is going away under the watchers too, so they hear the same
+    // thing rather than staring at a board that has stopped updating.
+    for (const watcher of room.spectators) {
+      watcher.watching = undefined;
+      send(watcher.ws, { type: "opponent-left" });
+    }
     stopClock(room); // the room is going away; don't leave a timer holding it
     rooms.delete(room.code);
   }

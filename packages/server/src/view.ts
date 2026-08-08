@@ -14,6 +14,30 @@ export const HIDDEN_CARD = "hidden";
  * knowing it would be a bigger leak than seeing the hand. Their discard pile is
  * public, exactly as it is across the table.
  */
+/**
+ * The version a spectator is allowed to see: neither player's hidden
+ * information, rather than one player's.
+ *
+ * A watcher who could see both hands would know more than either person
+ * playing, which turns watching into a way to help. Everything public — the
+ * board, both discard piles, lasting cards in play — stays.
+ */
+export function spectatorView(state: MatchState): MatchState {
+  const v = structuredClone(state);
+  for (const color of ["w", "b"] as Color[]) {
+    v.players[color].hand = v.players[color].hand.map(() => HIDDEN_CARD);
+    v.players[color].library = v.players[color].library.map(() => HIDDEN_CARD);
+    v.players[color].seenTop = null;
+    v.players[color].revealed = [];
+  }
+  if (v.pending?.kind === "summon-place") {
+    v.pending = { ...v.pending, card: HIDDEN_CARD };
+  }
+  // Buried mines stay buried; a watcher calling them out is the same leak.
+  v.enchants = v.enchants.filter((e) => !(e.card === "mine" && e.data?.hidden === 1));
+  return v;
+}
+
 export function viewFor(state: MatchState, viewer: Color): MatchState {
   const v = structuredClone(state);
   const opp: Color = viewer === "w" ? "b" : "w";

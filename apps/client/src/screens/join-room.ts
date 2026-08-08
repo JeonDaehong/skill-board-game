@@ -1,7 +1,7 @@
 import { el, type AppContext, type Screen } from "../router.js";
 import { gameById } from "../games.js";
 import { driveMatchmaking, type Matchmaking } from "../net.js";
-import type { RoomSummary } from "../types.js";
+import { MAX_SPECTATORS, type RoomSummary } from "../types.js";
 import { allDecksForMatch } from "../decks.js";
 import { multiScreen } from "./multi.js";
 import { art, icon, objectUrl } from "../ui/art.js";
@@ -63,6 +63,13 @@ export const joinRoomScreen: Screen = (ctx: AppContext) => {
     mm.send({ type: "join-room", code: code.trim(), password: password.trim(), decks: allDecksForMatch() });
   }
 
+  /** Watch instead of sitting down. No deck rides along — a watcher never acts. */
+  function watch(code: string, password: string): void {
+    if (!code.trim()) return setError(t("room.needCode"));
+    setError("");
+    mm.send({ type: "spectate", code: code.trim(), password: password.trim() });
+  }
+
   function renderRooms(rooms: RoomSummary[]): void {
     if (rooms.length === 0) {
       listBox.replaceChildren(el("div", { class: "list-empty", text: t("room.none") }));
@@ -71,7 +78,15 @@ export const joinRoomScreen: Screen = (ctx: AppContext) => {
     listBox.replaceChildren(
       ...rooms.map((room) => {
         const game = gameById(room.gameId);
-        const card = el("div", { class: "glass room-card" }, [
+        // A match already under way cannot be joined, only watched — and once
+        // three people are watching it, not even that.
+        const full = room.live && room.spectators >= MAX_SPECTATORS;
+        const action = el("button", {
+          class: `btn btn-small ${full ? "btn-ghost" : "btn-primary"}`,
+          text: room.live ? (full ? t("room.watchFull") : t("room.watch")) : t("common.join"),
+        }) as HTMLButtonElement;
+        action.disabled = full;
+        const card = el("div", { class: `glass room-card${room.live ? " live" : ""}` }, [
           art(objectUrl(room.gameId), "room-icon"),
           el("div", { class: "room-body" }, [
             el("span", { class: "room-title", text: room.title }),
@@ -79,17 +94,29 @@ export const joinRoomScreen: Screen = (ctx: AppContext) => {
               el("span", { text: game ? gameName(game.id) : room.gameId }),
               room.gameId === "chess" ? el("span", { class: "game-mode-chip", text: modeName(room.mode) }) : null,
               room.locked ? el("span", { text: "🔒" }) : null,
+              room.live
+                ? el("span", {
+                    class: "room-live",
+                    text: t("room.watchCount")
+                      .replace("{n}", String(room.spectators))
+                      .replace("{max}", String(MAX_SPECTATORS)),
+                  })
+                : null,
             ]),
           ]),
-          el("button", { class: "btn btn-primary btn-small", text: t("common.join"), onclick: () => onJoinRoom(room, card) }),
+          action,
         ]);
+        action.onclick = () => { if (!full) onPickRoom(room, card); };
         return card;
       }),
     );
   }
 
-  function onJoinRoom(room: RoomSummary, card: HTMLElement): void {
-    if (!room.locked) return join(room.code, "");
+  function onPickRoom(room: RoomSummary, card: HTMLElement): void {
+    // A live room is watched; one still waiting is joined. Everything past this
+    // point — including the password prompt — is the same either way.
+    const go = room.live ? watch : join;
+    if (!room.locked) return go(room.code, "");
     // Locked: reveal an inline password field on this card.
     const pw = el("input", { class: "field-input" }) as HTMLInputElement;
     pw.type = "password";
@@ -98,10 +125,10 @@ export const joinRoomScreen: Screen = (ctx: AppContext) => {
     card.replaceChildren(
       icon("locked", "room-icon"),
       pw,
-      el("button", { class: "btn btn-primary btn-small", text: t("common.ok"), onclick: () => join(room.code, pw.value) }),
+      el("button", { class: "btn btn-primary btn-small", text: t("common.ok"), onclick: () => go(room.code, pw.value) }),
     );
     pw.focus();
-    pw.onkeydown = (e) => { if (e.key === "Enter") join(room.code, pw.value); };
+    pw.onkeydown = (e) => { if (e.key === "Enter") go(room.code, pw.value); };
   }
 
   mm = driveMatchmaking(

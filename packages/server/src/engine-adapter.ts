@@ -9,7 +9,7 @@ import {
 } from "@skill/engine";
 import { opposite, type Color } from "@skill/chess-core";
 import { getGameModule, type GameModule } from "@skill/games";
-import { viewFor } from "./view.js";
+import { spectatorView, viewFor } from "./view.js";
 
 /**
  * Uniform server-side view of a match, regardless of which game it is. Chess
@@ -25,6 +25,8 @@ export interface RoomEngine {
   apply(action: unknown, color: Color): { ok: true; events: MatchEvent[] } | { ok: false; error: string };
   /** The state payload to send to `color` (hidden info filtered for chess). */
   view(color: Color): unknown;
+  /** The payload for a watcher, who is entitled to neither side's hidden info. */
+  spectatorView(): unknown;
   /** End the match because `loser` ran out of clock. */
   flagOut(loser: Color): MatchEvent[];
   /** Start a fresh game with the same setup (rematch). */
@@ -47,6 +49,7 @@ function makeChessEngine(mode: GameMode, whiteDeck: string[], blackDeck: string[
       return { ok: true, events: res.events };
     },
     view: (color) => viewFor(match, color),
+    spectatorView: () => spectatorView(match),
     flagOut(_loser) {
       // The reducer owns the ending, so a timeout reads the same as a
       // checkmate to every client: status/winner/endReason on the state. It
@@ -83,6 +86,7 @@ function makeBoardEngine(mod: GameModule): RoomEngine {
       return { ok: true, events: [] };
     },
     view: () => state, // full-information games: everyone sees the same board
+    spectatorView: () => state,
     flagOut(loser) {
       timedOut = loser;
       return [{ type: "game-over", winner: opposite(loser) as Color, reason: "timeout" }];

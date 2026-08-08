@@ -133,10 +133,19 @@ export interface RenderOptions {
    * terrain. Without these an enchant is invisible and the board lies about
    * what the pieces can do.
    */
-  marks?: { sq: Square; glyph: string; token?: TokenName | null; tone?: "good" | "bad" }[];
+  marks?: {
+    sq: Square;
+    glyph: string;
+    token?: TokenName | null;
+    tone?: "good" | "bad";
+    /** Turns until it lifts; null or absent means "until something dispels it". */
+    turns?: number | null;
+  }[];
 }
 
 const ZONE = "rgba(90, 140, 220, 0.34)";
+/** Digits on an enchant counter: tabular, so a 2 and a 1 sit the same. */
+const MARK_FONT = '"Segoe UI", sans-serif';
 const STUCK = "rgba(30, 30, 40, 0.42)";
 
 /**
@@ -389,13 +398,17 @@ export class BoardRenderer {
         this.drawTarget(x, y, !!piece);
       }
 
-      // Enchants and terrain, in the top-left corner of the square.
-      const mark = opts.marks?.find((m) => m.sq === sq);
-      if (mark) {
+      // Enchants and terrain, down the left edge of the square. All of them,
+      // not the first: a piece under two effects used to show one, so the
+      // second was something you only found out about by it happening.
+      const here = opts.marks?.filter((m) => m.sq === sq) ?? [];
+      for (const [slot, mark] of here.entries()) {
         const art = mark.token ? TOKENS[mark.token] : undefined;
         const r = size * 0.19;
         const cx = x + r + size * 0.05;
-        const cy = y + r + size * 0.05;
+        // Stacked downwards, overlapping slightly so three still fit inside
+        // the square rather than spilling onto the next rank.
+        const cy = y + r + size * 0.05 + slot * r * 1.7;
         ctx.save();
         if (art) {
           // The painted counter carries its own rim, so it needs no backing —
@@ -419,6 +432,26 @@ export class BoardRenderer {
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
           ctx.fillText(mark.glyph, cx, cy + r * 0.06);
+        }
+        // How much longer it has, on the counter's shoulder. An effect you can
+        // see but cannot time is one you cannot play around: "cursed" and
+        // "cursed for one more turn" are different positions.
+        if (typeof mark.turns === "number") {
+          const bx = cx + r * 0.78;
+          const by = cy + r * 0.78;
+          const br = r * 0.62;
+          ctx.beginPath();
+          ctx.arc(bx, by, br, 0, Math.PI * 2);
+          ctx.fillStyle = "rgba(16, 11, 7, 0.94)";
+          ctx.fill();
+          ctx.strokeStyle = mark.tone === "good" ? "#8fc35a" : "#e0645a";
+          ctx.lineWidth = Math.max(1, size * 0.014);
+          ctx.stroke();
+          ctx.fillStyle = "#f2e6c8";
+          ctx.font = `700 ${Math.round(br * 1.4)}px ${MARK_FONT}`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(String(mark.turns), bx, by + br * 0.06);
         }
         ctx.restore();
       }

@@ -109,7 +109,9 @@ function inCardPhase(s: MatchState): boolean {
 }
 
 // ── board helpers ───────────────────────────────────────────
-function neighborsOf(s: MatchState, sq: Square): Square[] {
+/** The up-to-eight squares touching `sq`. Exported because the client needs the
+ *  same ring to honour a spec's `nextTo` rather than re-deriving adjacency. */
+export function neighborsOf(s: MatchState, sq: Square): Square[] {
   const { chess } = s;
   const f = fileOf(sq, chess);
   const r = rankOf(sq, chess);
@@ -393,6 +395,43 @@ export function reduce(prev: MatchState, action: Action, rng: Rng = Math.random)
   }
 
   return applyAction(s, action, events, rng);
+}
+
+/** A fixed stream for probe reductions, whose results are all thrown away. */
+const PROBE_RNG: Rng = () => 0.5;
+
+/**
+ * Every square the pending targeting step would actually accept.
+ *
+ * Answered by trying it. `reduce` clones before it touches anything, so the
+ * cheapest way to know whether a pick lands is to make it on a copy and look at
+ * the answer — which makes this correct by construction for all sixty-three
+ * cards, including the ones whose rule is not about the square at all (밀쳐내기
+ * needs somewhere to shove them *to*; 끌어당기기 needs a clear line and room in
+ * front).
+ *
+ * The alternative is a second copy of each card's rule living in the UI, and
+ * that copy drifts. It already had: the board offered 질주 every empty square on
+ * it, the reducer refused all but the eight beside the piece, and the refusal
+ * was not shown — so the card looked like it did nothing.
+ */
+export function targetOptions(s: MatchState): Square[] {
+  const p = s.pending;
+  if (!p || p.kind !== "targeting") return [];
+  const spec = skillMeta(p.card)?.targets?.[p.step];
+  if (!spec) return [];
+  // Steps answered off-board (a card in hand, one of a fixed set of answers)
+  // have no squares to light up.
+  const wantsSquare = spec.kinds.some(
+    (k) => k === "own-piece" || k === "enemy-piece" || k === "empty",
+  );
+  if (!wantsSquare) return [];
+
+  const out: Square[] = [];
+  for (let sq = 0; sq < s.chess.board.length; sq++) {
+    if (reduce(s, { type: "target", sq }, PROBE_RNG).ok) out.push(sq);
+  }
+  return out;
 }
 
 /** Apply an action that has already cleared (or bypassed) the counter window. */
